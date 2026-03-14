@@ -27,9 +27,13 @@ import net.minecraft.world.StructureWorldAccess;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.util.math.random.Random;
+import net.minecraft.world.gen.feature.OrePlacedFeatures;
+import net.minecraft.world.gen.feature.PlacedFeature;
+import net.minecraft.world.gen.feature.VegetationPlacedFeatures;
 
 import java.util.List;
-import java.util.Random;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -101,7 +105,7 @@ public class MusicChunkGenerator extends ChunkGenerator {
 
         for (int i = 0; i < height; i++) {
             int y = minY + i;
-            states[i] = getBlockAt(x, y, z, finalH, p, new Random(x * 31L + z));
+            states[i] = getBlockAt(x, y, z, finalH, p, Random.create(x * 31L + z));
         }
         return new VerticalBlockSample(minY, states);
     }
@@ -134,7 +138,7 @@ public class MusicChunkGenerator extends ChunkGenerator {
                 int worldX = startX + x;
                 int worldZ = startZ + z;
                 int finalH = computeHeight(worldX, worldZ, p);
-                Random colRand = new Random(worldX * 31L + worldZ);
+                Random colRand = Random.create(worldX * 31L + worldZ);
 
                 for (int y = minY; y < maxY; y++) {
                     mpos.set(worldX, y, worldZ);
@@ -216,7 +220,7 @@ public class MusicChunkGenerator extends ChunkGenerator {
     }
 
     // -------------------------------------------------------------------------
-    // Features: trees + structures
+    // Features: trees + ores + structures
     // -------------------------------------------------------------------------
 
     @Override
@@ -228,55 +232,98 @@ public class MusicChunkGenerator extends ChunkGenerator {
         int startX = chunk.getPos().getStartX();
         int startZ = chunk.getPos().getStartZ();
 
-        Random chunkRand = new Random(chunkX * 341873128712L + chunkZ * 132897987541L);
+        Random chunkRand = Random.create(chunkX * 341873128712L + chunkZ * 132897987541L);
 
-        placeTrees(world, p, startX, startZ, chunkRand);
+        // Vanilla trees via PlacedFeature
+        placeVanillaTrees(world, chunk, p, chunkRand);
+
+        // Vanilla ores
+        placeOres(world, chunk, p, chunkRand);
+
+        // Custom genre structures (10% chance per chunk)
         placeStructure(world, p, startX, startZ, chunkX, chunkZ, chunkRand);
     }
 
     // -------------------------------------------------------------------------
-    // Trees
+    // Vanilla trees via PlacedFeature registry
     // -------------------------------------------------------------------------
 
-    private void placeTrees(StructureWorldAccess world, GenreProfile p,
-                            int startX, int startZ, Random rand) {
-        int attempts = (int) (p.treeFrequency * 20);
+    private void placeVanillaTrees(StructureWorldAccess world, Chunk chunk,
+                                   GenreProfile p, Random rand) {
+        if (p.treeFrequency <= 0) return;
+
+        Registry<PlacedFeature> registry = world.getRegistryManager().get(RegistryKeys.PLACED_FEATURE);
+        RegistryKey<PlacedFeature> treeKey = getTreeKeyForGenre(p);
+        Optional<PlacedFeature> featureOpt = registry.getOrEmpty(treeKey);
+        if (featureOpt.isEmpty()) return;
+
+        PlacedFeature feature = featureOpt.get();
+        int attempts = (int) (p.treeFrequency * 16);
+        int startX = chunk.getPos().getStartX();
+        int startZ = chunk.getPos().getStartZ();
+
         for (int i = 0; i < attempts; i++) {
-            int lx = rand.nextInt(8) + 4;   // 4..11 — min 4 from edge
-            int lz = rand.nextInt(8) + 4;
-            int worldX = startX + lx;
-            int worldZ = startZ + lz;
-            int groundY = computeHeight(worldX, worldZ, p);
-
-            // Only place on the surface block
-            BlockState surface = world.getBlockState(new BlockPos(worldX, groundY, worldZ));
-            if (!surface.isOf(resolveBlock(p.surfaceBlock).getBlock())) continue;
-
-            placeTree(world, worldX, groundY + 1, worldZ);
+            int wx = startX + rand.nextInt(16);
+            int wz = startZ + rand.nextInt(16);
+            int groundY = computeHeight(wx, wz, p);
+            BlockPos pos = new BlockPos(wx, groundY, wz);
+            feature.generate(world, this, rand, pos);
         }
     }
 
-    private void placeTree(StructureWorldAccess world, int x, int baseY, int z) {
-        BlockPos.Mutable mpos = new BlockPos.Mutable();
+    private RegistryKey<PlacedFeature> getTreeKeyForGenre(GenreProfile p) {
+        return switch (p.structureType) {
+            case "PILLARS"   -> VegetationPlacedFeatures.TREES_TAIGA;        // metal: dark spruce
+            case "BUILDINGS" -> VegetationPlacedFeatures.TREES_PLAINS;       // jazz: scattered oaks
+            case "COLUMNS"   -> VegetationPlacedFeatures.TREES_FLOWER_FOREST; // classical: dense flower forest
+            case "PLATFORMS" -> VegetationPlacedFeatures.TREES_SAVANNA;      // hiphop: acacia
+            case "GAZEBOS"   -> VegetationPlacedFeatures.BIRCH_TALL;         // pop: birch
+            case "RUINS"     -> VegetationPlacedFeatures.TREES_OLD_GROWTH_SPRUCE_TAIGA; // ambient: old spruce
+            default          -> VegetationPlacedFeatures.TREES_PLAINS;
+        };
+    }
 
-        // 4-block trunk
-        for (int y = 0; y < 4; y++) {
-            mpos.set(x, baseY + y, z);
-            world.setBlockState(mpos, Blocks.OAK_LOG.getDefaultState(), 3);
-        }
+    // -------------------------------------------------------------------------
+    // Vanilla ores via PlacedFeature registry
+    // -------------------------------------------------------------------------
 
-        // 3x3x2 leaf sphere at top
-        int topY = baseY + 4;
-        for (int dy = 0; dy < 2; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    mpos.set(x + dx, topY + dy, z + dz);
-                    if (world.getBlockState(mpos).isAir()) {
-                        world.setBlockState(mpos, Blocks.OAK_LEAVES.getDefaultState(), 3);
-                    }
-                }
-            }
+    private void placeOres(StructureWorldAccess world, Chunk chunk,
+                           GenreProfile p, Random rand) {
+        Registry<PlacedFeature> registry = world.getRegistryManager().get(RegistryKeys.PLACED_FEATURE);
+        int startX = chunk.getPos().getStartX();
+        int startZ = chunk.getPos().getStartZ();
+        BlockPos origin = new BlockPos(startX + 8, 0, startZ + 8);
+
+        for (RegistryKey<PlacedFeature> oreKey : getOreKeysForGenre(p)) {
+            registry.getOrEmpty(oreKey).ifPresent(f ->
+                    f.generate(world, this, rand, origin));
         }
+    }
+
+    private List<RegistryKey<PlacedFeature>> getOreKeysForGenre(GenreProfile p) {
+        return switch (p.structureType) {
+            case "PILLARS" ->   // metal: iron, coal, gold heavy
+                    List.of(OrePlacedFeatures.ORE_IRON_UPPER, OrePlacedFeatures.ORE_IRON_MIDDLE,
+                            OrePlacedFeatures.ORE_COAL_UPPER, OrePlacedFeatures.ORE_GOLD);
+            case "BUILDINGS" -> // jazz: standard mix
+                    List.of(OrePlacedFeatures.ORE_IRON_UPPER, OrePlacedFeatures.ORE_COAL_UPPER,
+                            OrePlacedFeatures.ORE_COPPER);
+            case "COLUMNS" ->   // classical: quartz feel — gold, diamond
+                    List.of(OrePlacedFeatures.ORE_GOLD, OrePlacedFeatures.ORE_DIAMOND,
+                            OrePlacedFeatures.ORE_EMERALD);
+            case "PLATFORMS" -> // hiphop: coal, iron, redstone
+                    List.of(OrePlacedFeatures.ORE_COAL_UPPER, OrePlacedFeatures.ORE_IRON_MIDDLE,
+                            OrePlacedFeatures.ORE_REDSTONE);
+            case "GAZEBOS" ->   // pop: light ores
+                    List.of(OrePlacedFeatures.ORE_COAL_UPPER, OrePlacedFeatures.ORE_COPPER,
+                            OrePlacedFeatures.ORE_IRON_UPPER);
+            case "RUINS" ->     // ambient: clay, lapis, diamond rare
+                    List.of(OrePlacedFeatures.ORE_LAPIS, OrePlacedFeatures.ORE_DIAMOND,
+                            OrePlacedFeatures.ORE_IRON_MIDDLE);
+            default ->          // electronic: redstone, lapis, gold
+                    List.of(OrePlacedFeatures.ORE_REDSTONE, OrePlacedFeatures.ORE_LAPIS,
+                            OrePlacedFeatures.ORE_GOLD);
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -286,7 +333,7 @@ public class MusicChunkGenerator extends ChunkGenerator {
     private void placeStructure(StructureWorldAccess world, GenreProfile p,
                                 int startX, int startZ, int chunkX, int chunkZ, Random rand) {
         // Seeded 10% trigger
-        Random triggerRand = new Random(chunkX * 1234567891L ^ chunkZ * 987654321L);
+        Random triggerRand = Random.create(chunkX * 1234567891L ^ chunkZ * 987654321L);
         if (triggerRand.nextInt(10) != 0) return;
 
         // Place at chunk centre
@@ -307,7 +354,7 @@ public class MusicChunkGenerator extends ChunkGenerator {
 
     // PILLARS (Metal): 5x5 BLACKSTONE base, OBSIDIAN pillar 15-25 high, LAVA on top
     private void buildPillar(StructureWorldAccess world, int cx, int groundY, int cz) {
-        Random r = new Random(cx * 31L + cz);
+        Random r = Random.create(cx * 31L + cz);
         int height = 15 + r.nextInt(11);
         BlockPos.Mutable m = new BlockPos.Mutable();
 
@@ -460,7 +507,7 @@ public class MusicChunkGenerator extends ChunkGenerator {
     // RUINS (Ambient): partial 6x6 MOSSY_COBBLESTONE, 40% blocks removed, interior WATER
     private void buildRuin(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
         BlockPos.Mutable m = new BlockPos.Mutable();
-        Random ruinRand = new Random(cx * 77777L + cz);
+        Random ruinRand = Random.create(cx * 77777L + cz);
 
         // Walls 3 high
         for (int y = 0; y <= 3; y++) {
