@@ -3,12 +3,14 @@ package com.musicworld;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.musicworld.data.GenreProfile;
 import com.musicworld.data.WorldGenConfig;
-import com.musicworld.worldgen.MusicChunkGenerator;
+import com.musicworld.worldgen.GenreBiomeSource;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
@@ -25,32 +27,27 @@ public class MusicWorldMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        // Register custom chunk generator codec
+        // Register the custom biome source codec so the datapack can reference it
         Registry.register(
-                Registries.CHUNK_GENERATOR,
-                new Identifier(MOD_ID, "music_generator"),
-                MusicChunkGenerator.CODEC
+                Registries.BIOME_SOURCE,
+                new Identifier(MOD_ID, "genre_biome_source"),
+                GenreBiomeSource.CODEC
         );
 
         registerCommand();
 
-        // Log active genre when server starts
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            LOGGER.info("[MusicWorld] Server starting — active genre: {}",
-                    getActiveGenreName());
+            LOGGER.info("[MusicWorld] Server starting — active genre: {}", getActiveGenreName());
         });
 
         LOGGER.info("[MusicWorld] Initialized. Default genre: classical");
     }
 
-    private static String getActiveGenreName() {
-        // Reverse-lookup the key for the active profile
+    public static String getActiveGenreName() {
         for (var entry : GenreProfile.GENRES.entrySet()) {
-            if (entry.getValue() == WorldGenConfig.getActive()) {
-                return entry.getKey();
-            }
+            if (entry.getValue() == WorldGenConfig.getActive()) return entry.getKey();
         }
-        return "unknown";
+        return "classical";
     }
 
     private static void registerCommand() {
@@ -64,11 +61,9 @@ public class MusicWorldMod implements ModInitializer {
                                                     .toLowerCase();
 
                                             if (!GenreProfile.GENRES.containsKey(genre)) {
-                                                // List available genres
                                                 StringJoiner sj = new StringJoiner(", ");
                                                 GenreProfile.GENRES.keySet().stream()
-                                                        .sorted()
-                                                        .forEach(sj::add);
+                                                        .sorted().forEach(sj::add);
                                                 source.sendError(Text.literal(
                                                         "Unknown genre '" + genre + "'. Available: " + sj));
                                                 return 0;
@@ -77,7 +72,7 @@ public class MusicWorldMod implements ModInitializer {
                                             WorldGenConfig.setGenre(genre);
                                             source.sendFeedback(
                                                     () -> Text.literal("Genre set to: " + genre
-                                                            + ". New chunks will use this profile."),
+                                                            + ". Create a new world to apply."),
                                                     true);
                                             return 1;
                                         }))

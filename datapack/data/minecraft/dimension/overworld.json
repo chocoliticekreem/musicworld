@@ -1,10 +1,11 @@
 {
   "type": "minecraft:overworld",
   "generator": {
-    "type": "musicworld:music_generator",
+    "type": "minecraft:noise",
+    "settings": "minecraft:overworld",
     "biome_source": {
-      "type": "minecraft:fixed",
-      "biome": "minecraft:plains"
+      "type": "musicworld:genre_biome_source",
+      "biome": "musicworld:classical"
     }
   }
 }
