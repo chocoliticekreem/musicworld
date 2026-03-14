@@ -10,6 +10,16 @@ import urllib.parse
 import urllib.request
 import json
 
+# Load .env file if present
+_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 APPLESCRIPT = '''
 tell application "Spotify"
     if player state is playing then
@@ -29,7 +39,7 @@ GENRE_KEYWORDS = {
     "classical":  ["classical", "orchestra", "symphony", "opera", "baroque", "chamber music", "piano"],
     "hiphop":     ["hip hop", "hiphop", "rap", "trap", "drill", "boom bap"],
     "electronic": ["electronic", "techno", "house", "edm", "drum and bass", "dnb", "dubstep", "synth"],
-    "pop":        ["pop", "indie pop", "dance pop", "k-pop", "teen pop"],
+    "pop":        ["indie pop", "dance pop", "k-pop", "teen pop", "pop rock", "pop punk"],
     "ambient":    ["ambient", "chill", "lofi", "lo-fi", "meditation", "new age", "drone"],
 }
 
