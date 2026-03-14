@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:overworld",
+  "generator": {
+    "type": "musicworld:music_generator",
+    "biome_source": {
+      "type": "minecraft:fixed",
+      "biome": "minecraft:plains"
+    }
+  }
+}
