@@ -27,3 +27,11 @@ remappedSources/
 
 # Mod build outputs (keep datapack)
 build/
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
