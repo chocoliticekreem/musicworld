@@ -6,16 +6,12 @@ import com.musicworld.data.GenreProfile;
 import com.musicworld.data.WorldGenConfig;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
-import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.ChunkRegion;
 import net.minecraft.world.HeightLimitView;
 import net.minecraft.world.Heightmap;
-import net.minecraft.world.biome.Biome;
-import net.minecraft.world.biome.BiomeKeys;
 import net.minecraft.world.biome.source.BiomeAccess;
 import net.minecraft.world.biome.source.BiomeSource;
-import net.minecraft.world.biome.source.FixedBiomeSource;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.gen.GenerationStep;
 import net.minecraft.world.gen.StructureAccessor;
@@ -30,10 +26,8 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.world.gen.feature.OrePlacedFeatures;
 import net.minecraft.world.gen.feature.PlacedFeature;
-import net.minecraft.world.gen.feature.VegetationPlacedFeatures;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -245,42 +239,155 @@ public class MusicChunkGenerator extends ChunkGenerator {
     }
 
     // -------------------------------------------------------------------------
-    // Vanilla trees via PlacedFeature registry
+    // Trees — directly placed, no biome/surface dependency
     // -------------------------------------------------------------------------
 
     private void placeVanillaTrees(StructureWorldAccess world, Chunk chunk,
                                    GenreProfile p, Random rand) {
         if (p.treeFrequency <= 0) return;
 
-        Registry<PlacedFeature> registry = world.getRegistryManager().get(RegistryKeys.PLACED_FEATURE);
-        RegistryKey<PlacedFeature> treeKey = getTreeKeyForGenre(p);
-        Optional<PlacedFeature> featureOpt = registry.getOrEmpty(treeKey);
-        if (featureOpt.isEmpty()) return;
-
-        PlacedFeature feature = featureOpt.get();
-        int attempts = (int) (p.treeFrequency * 16);
+        int attempts = Math.max(1, (int) (p.treeFrequency * 12));
         int startX = chunk.getPos().getStartX();
         int startZ = chunk.getPos().getStartZ();
 
         for (int i = 0; i < attempts; i++) {
+            if (rand.nextFloat() > p.treeFrequency) continue;
             int wx = startX + rand.nextInt(16);
             int wz = startZ + rand.nextInt(16);
             int groundY = computeHeight(wx, wz, p);
-            BlockPos pos = new BlockPos(wx, groundY, wz);
-            feature.generate(world, this, rand, pos);
+            placeTree(world, wx, groundY + 1, wz, p, rand);
         }
     }
 
-    private RegistryKey<PlacedFeature> getTreeKeyForGenre(GenreProfile p) {
-        return switch (p.structureType) {
-            case "PILLARS"   -> VegetationPlacedFeatures.TREES_TAIGA;        // metal: dark spruce
-            case "BUILDINGS" -> VegetationPlacedFeatures.TREES_PLAINS;       // jazz: scattered oaks
-            case "COLUMNS"   -> VegetationPlacedFeatures.TREES_FLOWER_FOREST; // classical: dense flower forest
-            case "PLATFORMS" -> VegetationPlacedFeatures.TREES_SAVANNA;      // hiphop: acacia
-            case "GAZEBOS"   -> VegetationPlacedFeatures.BIRCH_TALL;         // pop: birch
-            case "RUINS"     -> VegetationPlacedFeatures.TREES_OLD_GROWTH_SPRUCE_TAIGA; // ambient: old spruce
-            default          -> VegetationPlacedFeatures.TREES_PLAINS;
-        };
+    /** Place a genre-appropriate tree at the given base position. */
+    private void placeTree(StructureWorldAccess world, int x, int y, int z,
+                           GenreProfile p, Random rand) {
+        switch (p.structureType) {
+            case "PILLARS"   -> placeSpruceTree(world, x, y, z, rand);   // metal: dark spruce
+            case "BUILDINGS" -> placeOakTree(world, x, y, z, rand);      // jazz: oak
+            case "COLUMNS"   -> {                                          // classical: mix oak + birch
+                if (rand.nextBoolean()) placeOakTree(world, x, y, z, rand);
+                else placeBirchTree(world, x, y, z, rand);
+            }
+            case "PLATFORMS" -> placeAcaciaTree(world, x, y, z, rand);   // hiphop: acacia
+            case "GAZEBOS"   -> placeBirchTree(world, x, y, z, rand);    // pop: birch
+            case "RUINS"     -> placeSpruceTree(world, x, y, z, rand);   // ambient: spruce
+            default          -> placeOakTree(world, x, y, z, rand);
+        }
+    }
+
+    /** Oak tree: trunk 4-6 high, round leaf blob */
+    private void placeOakTree(StructureWorldAccess world, int x, int y, int z, Random rand) {
+        int height = 4 + rand.nextInt(3);
+        BlockState log = Blocks.OAK_LOG.getDefaultState();
+        BlockState leaves = Blocks.OAK_LEAVES.getDefaultState();
+        BlockPos.Mutable m = new BlockPos.Mutable();
+
+        for (int dy = 0; dy < height; dy++) {
+            m.set(x, y + dy, z);
+            world.setBlockState(m, log, 3);
+        }
+        // Round leaf blob around top
+        int top = y + height;
+        for (int dy = -1; dy <= 2; dy++) {
+            int radius = (dy <= 0) ? 2 : (dy == 1 ? 2 : 1);
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (dx == 0 && dz == 0 && dy < 0) continue; // log position
+                    if (Math.abs(dx) == radius && Math.abs(dz) == radius && rand.nextBoolean()) continue;
+                    m.set(x + dx, top + dy, z + dz);
+                    if (world.getBlockState(m).isAir()) world.setBlockState(m, leaves, 3);
+                }
+            }
+        }
+    }
+
+    /** Birch tree: trunk 5-7 high, slightly narrower leaf blob */
+    private void placeBirchTree(StructureWorldAccess world, int x, int y, int z, Random rand) {
+        int height = 5 + rand.nextInt(3);
+        BlockState log = Blocks.BIRCH_LOG.getDefaultState();
+        BlockState leaves = Blocks.BIRCH_LEAVES.getDefaultState();
+        BlockPos.Mutable m = new BlockPos.Mutable();
+
+        for (int dy = 0; dy < height; dy++) {
+            m.set(x, y + dy, z);
+            world.setBlockState(m, log, 3);
+        }
+        int top = y + height;
+        for (int dy = -1; dy <= 2; dy++) {
+            int radius = (dy <= 0) ? 2 : (dy == 1 ? 1 : 1);
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (dx == 0 && dz == 0 && dy < 0) continue;
+                    if (Math.abs(dx) == 2 && Math.abs(dz) == 2) continue; // clip corners
+                    m.set(x + dx, top + dy, z + dz);
+                    if (world.getBlockState(m).isAir()) world.setBlockState(m, leaves, 3);
+                }
+            }
+        }
+    }
+
+    /** Spruce tree: trunk 6-10 high, layered cone leaves */
+    private void placeSpruceTree(StructureWorldAccess world, int x, int y, int z, Random rand) {
+        int height = 6 + rand.nextInt(5);
+        BlockState log = Blocks.SPRUCE_LOG.getDefaultState();
+        BlockState leaves = Blocks.SPRUCE_LEAVES.getDefaultState();
+        BlockPos.Mutable m = new BlockPos.Mutable();
+
+        for (int dy = 0; dy < height; dy++) {
+            m.set(x, y + dy, z);
+            world.setBlockState(m, log, 3);
+        }
+        // Cone: wide at bottom, tip at top
+        int top = y + height;
+        for (int layer = 0; layer < 5; layer++) {
+            int radius = Math.max(0, 2 - layer / 2);
+            int ly = top - layer;
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (dx == 0 && dz == 0) continue;
+                    if (Math.abs(dx) == radius && Math.abs(dz) == radius && rand.nextBoolean()) continue;
+                    m.set(x + dx, ly, z + dz);
+                    if (world.getBlockState(m).isAir()) world.setBlockState(m, leaves, 3);
+                }
+            }
+        }
+        // Top cap
+        m.set(x, top + 1, z);
+        world.setBlockState(m, leaves, 3);
+    }
+
+    /** Acacia tree: forked trunk, flat leaf canopy */
+    private void placeAcaciaTree(StructureWorldAccess world, int x, int y, int z, Random rand) {
+        int height = 5 + rand.nextInt(3);
+        BlockState log = Blocks.ACACIA_LOG.getDefaultState();
+        BlockState leaves = Blocks.ACACIA_LEAVES.getDefaultState();
+        BlockPos.Mutable m = new BlockPos.Mutable();
+
+        // Main trunk
+        for (int dy = 0; dy < height - 1; dy++) {
+            m.set(x, y + dy, z);
+            world.setBlockState(m, log, 3);
+        }
+        // Fork: two branches at angle
+        int forkY = y + height - 1;
+        int[][] forks = {{1, 0}, {-1, 0}};
+        if (rand.nextBoolean()) forks = new int[][]{{0, 1}, {0, -1}};
+        for (int[] fork : forks) {
+            m.set(x + fork[0], forkY, z + fork[1]);
+            world.setBlockState(m, log, 3);
+            m.set(x + fork[0], forkY + 1, z + fork[1]);
+            world.setBlockState(m, log, 3);
+            // Flat leaf pad at fork top
+            int lx = x + fork[0], lz = z + fork[1], topY = forkY + 1;
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    if (Math.abs(dx) == 2 && Math.abs(dz) == 2) continue;
+                    m.set(lx + dx, topY + 1, lz + dz);
+                    if (world.getBlockState(m).isAir()) world.setBlockState(m, leaves, 3);
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
