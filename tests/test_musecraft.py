@@ -47,3 +47,19 @@ def test_detect_genre_unknown_returns_none(monkeypatch):
     monkeypatch.setattr(musecraft, '_lastfm_tags', fake_lastfm)
     genre = musecraft.detect_genre("Unknown Track", "Unknown Artist", api_key="testkey")
     assert genre is None
+
+
+def test_send_genworld_calls_rcon(monkeypatch):
+    commands_sent = []
+
+    class FakeMCRcon:
+        def __init__(self, host, password, port): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def command(self, cmd):
+            commands_sent.append(cmd)
+            return ""
+
+    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
+    musecraft.send_genworld("hiphop", host="127.0.0.1", password="test", port=25575)
+    assert commands_sent == ["/genworld hiphop"]

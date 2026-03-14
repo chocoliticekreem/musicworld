@@ -1,3 +1,8 @@
+try:
+    from mcrcon import MCRcon
+except ImportError:
+    MCRcon = None
+
 import subprocess
 import urllib.parse
 import urllib.request
@@ -66,6 +71,21 @@ def detect_genre(track, artist, api_key):
         if genre:
             return genre
     return None
+
+
+def send_genworld(genre, host="127.0.0.1", password="", port=25575):
+    """Send /genworld <genre> to Minecraft via RCON."""
+    if MCRcon is None:
+        print("mcrcon not installed. Run: pip install mcrcon")
+        return
+    try:
+        with MCRcon(host, password, port=port) as mcr:
+            response = mcr.command(f"/genworld {genre}")
+            print(f"  RCON /genworld {genre} -> {response!r}")
+    except ConnectionRefusedError:
+        print(f"  RCON: server offline or RCON not enabled on port {port}")
+    except Exception as e:
+        print(f"  RCON error: {e}")
 
 
 def get_current_track():
