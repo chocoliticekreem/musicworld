@@ -30,3 +30,8 @@ build/
 
 # Secrets
 .env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
