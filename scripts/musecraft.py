@@ -3,7 +3,9 @@ try:
 except ImportError:
     MCRcon = None
 
+import os
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 import json
@@ -101,3 +103,71 @@ def get_current_track():
     if len(parts) != 2:
         return None
     return parts[0].strip(), parts[1].strip()
+
+
+CONFIG = {
+    "lastfm_api_key": os.getenv("LASTFM_API_KEY", ""),
+    "rcon_host":      os.getenv("RCON_HOST", "127.0.0.1"),
+    "rcon_port":      int(os.getenv("RCON_PORT", "25575")),
+    "rcon_password":  os.getenv("RCON_PASSWORD", ""),
+    "poll_interval":  20,
+}
+
+
+def main():
+    print("musecraft starting. Ctrl+C to stop.")
+    if not CONFIG["lastfm_api_key"]:
+        print("ERROR: Set LASTFM_API_KEY env var. Get a free key at https://www.last.fm/api")
+        return
+    if not CONFIG["rcon_password"]:
+        print("ERROR: Set RCON_PASSWORD env var.")
+        return
+
+    current_genre = None
+    last_track = None
+
+    while True:
+        try:
+            track_info = get_current_track()
+            if not track_info:
+                print("Spotify not playing.")
+                time.sleep(CONFIG["poll_interval"])
+                continue
+
+            track, artist = track_info
+            if (track, artist) == last_track:
+                time.sleep(CONFIG["poll_interval"])
+                continue
+
+            last_track = (track, artist)
+            print(f"Now playing: {artist} — {track}")
+
+            genre = detect_genre(track, artist, api_key=CONFIG["lastfm_api_key"])
+            if not genre:
+                print("  Genre unknown, keeping current.")
+                time.sleep(CONFIG["poll_interval"])
+                continue
+
+            if genre != current_genre:
+                print(f"  Genre: {current_genre} -> {genre}")
+                send_genworld(
+                    genre,
+                    host=CONFIG["rcon_host"],
+                    password=CONFIG["rcon_password"],
+                    port=CONFIG["rcon_port"],
+                )
+                current_genre = genre
+            else:
+                print(f"  Genre unchanged: {genre}")
+
+        except KeyboardInterrupt:
+            print("\nStopped.")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+
+        time.sleep(CONFIG["poll_interval"])
+
+
+if __name__ == "__main__":
+    main()
