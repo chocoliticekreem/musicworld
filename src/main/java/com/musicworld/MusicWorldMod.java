@@ -3,6 +3,7 @@ package com.musicworld;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.musicworld.data.GenreProfile;
 import com.musicworld.data.WorldGenConfig;
+import com.musicworld.worldgen.MusicBiomeSource;
 import com.musicworld.worldgen.MusicChunkGenerator;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -25,6 +26,13 @@ public class MusicWorldMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // Register custom biome source codec (must be before chunk generator)
+        Registry.register(
+                Registries.BIOME_SOURCE,
+                new Identifier(MOD_ID, "music_biome_source"),
+                MusicBiomeSource.CODEC
+        );
+
         // Register custom chunk generator codec
         Registry.register(
                 Registries.CHUNK_GENERATOR,

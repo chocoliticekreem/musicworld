@@ -24,8 +24,10 @@ import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.util.math.random.Random;
+import net.minecraft.world.gen.feature.MiscPlacedFeatures;
 import net.minecraft.world.gen.feature.OrePlacedFeatures;
 import net.minecraft.world.gen.feature.PlacedFeature;
+import net.minecraft.world.gen.feature.UndergroundPlacedFeatures;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -220,21 +222,27 @@ public class MusicChunkGenerator extends ChunkGenerator {
     @Override
     public void generateFeatures(StructureWorldAccess world, Chunk chunk,
                                  StructureAccessor structureAccessor) {
+        // Render vanilla structure pieces (villages, mineshafts, etc.) into blocks FIRST.
+        // Without this call, structures are placed in setStructureStarts but never built.
+        try {
+            super.generateFeatures(world, chunk, structureAccessor);
+        } catch (Exception e) {
+            // Log and continue — never crash world gen over a vanilla feature error
+            // (can happen if biome features reference blocks not in our world)
+        }
+
         GenreProfile p = WorldGenConfig.getActive();
         int chunkX = chunk.getPos().x;
         int chunkZ = chunk.getPos().z;
         int startX = chunk.getPos().getStartX();
         int startZ = chunk.getPos().getStartZ();
 
-        Random chunkRand = Random.create(chunkX * 341873128712L + chunkZ * 132897987541L);
+        Random chunkRand = Random.create(chunkX * 341873128712L ^ chunkZ * 132897987541L);
 
-        // Vanilla trees via PlacedFeature
         placeVanillaTrees(world, chunk, p, chunkRand);
-
-        // Vanilla ores
         placeOres(world, chunk, p, chunkRand);
-
-        // Custom genre structures (10% chance per chunk)
+        placeUndergroundFeatures(world, chunk, p, chunkRand);
+        placeSurfaceDecorations(world, chunk, p, chunkRand);
         placeStructure(world, p, startX, startZ, chunkX, chunkZ, chunkRand);
     }
 
@@ -434,211 +442,611 @@ public class MusicChunkGenerator extends ChunkGenerator {
     }
 
     // -------------------------------------------------------------------------
-    // Structures — 10% of chunks
+    // Underground features per genre
+    // -------------------------------------------------------------------------
+
+    private void placeUndergroundFeatures(StructureWorldAccess world, Chunk chunk,
+                                          GenreProfile p, Random rand) {
+        int startX = chunk.getPos().getStartX();
+        int startZ = chunk.getPos().getStartZ();
+        var registry = world.getRegistryManager().get(RegistryKeys.PLACED_FEATURE);
+
+        // Helper: place a feature's ConfiguredFeature directly (bypasses BiomePlacementModifier)
+        java.util.function.BiConsumer<RegistryKey<PlacedFeature>, Integer> tryPlace =
+            (key, yHint) -> registry.getOrEmpty(key).ifPresent(f -> {
+                try {
+                    BlockPos pos = new BlockPos(
+                        startX + rand.nextInt(16),
+                        yHint,
+                        startZ + rand.nextInt(16));
+                    f.feature().value().generate(world, this, rand, pos);
+                } catch (Exception ignored) { }
+            });
+
+        switch (p.structureType) {
+            case "PILLARS" -> {  // metal: lava, dripstone, fossils, dungeons
+                if (rand.nextInt(9) == 0)
+                    tryPlace.accept(MiscPlacedFeatures.LAKE_LAVA_UNDERGROUND, -20 + rand.nextInt(30));
+                if (rand.nextInt(3) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.DRIPSTONE_CLUSTER, -30 + rand.nextInt(20));
+                if (rand.nextInt(64) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.FOSSIL_UPPER, 10 + rand.nextInt(40));
+                if (rand.nextInt(8) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.MONSTER_ROOM, 10 + rand.nextInt(40));
+            }
+            case "BUILDINGS" -> {  // jazz: dungeons, cave vines, glow lichen
+                if (rand.nextInt(8) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.MONSTER_ROOM, 10 + rand.nextInt(50));
+                if (rand.nextInt(3) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.CAVE_VINES, 20 + rand.nextInt(40));
+                if (rand.nextInt(4) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.GLOW_LICHEN, 10 + rand.nextInt(50));
+            }
+            case "COLUMNS" -> {  // classical: amethyst geodes, dripstone, spore blossoms
+                if (rand.nextInt(24) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.AMETHYST_GEODE, 6 + rand.nextInt(24));
+                if (rand.nextInt(3) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.DRIPSTONE_CLUSTER, -20 + rand.nextInt(40));
+                if (rand.nextInt(2) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.SPORE_BLOSSOM, 20 + rand.nextInt(40));
+            }
+            case "PLATFORMS" -> {  // hiphop: dungeons, lava lakes, lava springs
+                if (rand.nextInt(8) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.MONSTER_ROOM_DEEP, -20 + rand.nextInt(30));
+                if (rand.nextInt(9) == 0)
+                    tryPlace.accept(MiscPlacedFeatures.LAKE_LAVA_UNDERGROUND, -30 + rand.nextInt(20));
+                if (rand.nextInt(4) == 0)
+                    tryPlace.accept(MiscPlacedFeatures.SPRING_LAVA, -10 + rand.nextInt(30));
+            }
+            case "NONE" -> {  // electronic: sculk veins, large dripstone, deep sculk
+                if (rand.nextInt(2) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.SCULK_VEIN, -20 + rand.nextInt(30));
+                if (rand.nextInt(3) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.LARGE_DRIPSTONE, -10 + rand.nextInt(40));
+                if (rand.nextInt(16) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.SCULK_PATCH_DEEP_DARK, -50 + rand.nextInt(10));
+            }
+            case "GAZEBOS" -> {  // pop: cave vines, azalea roots, lush clay
+                if (rand.nextInt(3) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.CAVE_VINES, 10 + rand.nextInt(40));
+                if (rand.nextInt(4) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.ROOTED_AZALEA_TREE, 10 + rand.nextInt(40));
+                if (rand.nextInt(4) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.LUSH_CAVES_CLAY, 5 + rand.nextInt(30));
+            }
+            case "RUINS" -> {  // ambient: amethyst geodes, sculk veins, cave vines
+                if (rand.nextInt(16) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.AMETHYST_GEODE, 6 + rand.nextInt(24));
+                if (rand.nextInt(3) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.SCULK_VEIN, -30 + rand.nextInt(30));
+                if (rand.nextInt(3) == 0)
+                    tryPlace.accept(UndergroundPlacedFeatures.CAVE_VINES, 10 + rand.nextInt(40));
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Surface decorations per genre
+    // -------------------------------------------------------------------------
+
+    private void placeSurfaceDecorations(StructureWorldAccess world, Chunk chunk,
+                                          GenreProfile p, Random rand) {
+        int startX = chunk.getPos().getStartX();
+        int startZ = chunk.getPos().getStartZ();
+        BlockPos.Mutable m = new BlockPos.Mutable();
+
+        switch (p.structureType) {
+            case "PILLARS" -> {  // metal: lava drips at cliffs, bone blocks, soul fire
+                // Lava waterfalls: find cliff edges (4+ block drops) and run lava down
+                for (int i = 0; i < 3; i++) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p);
+                    int adjacent = computeHeight(wx + 1, wz, p);
+                    if (h - adjacent >= 4) {
+                        for (int y = adjacent + 1; y <= h; y++) {
+                            m.set(wx, y, wz);
+                            if (world.getBlockState(m).isAir())
+                                world.setBlockState(m, Blocks.LAVA.getDefaultState(), 3);
+                        }
+                    }
+                }
+                // Bone block debris (fossil feel)
+                for (int i = 0; i < 2 + rand.nextInt(3); i++) {
+                    if (rand.nextInt(5) != 0) continue;
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p);
+                    m.set(wx, h, wz);
+                    world.setBlockState(m, Blocks.BONE_BLOCK.getDefaultState(), 3);
+                }
+                // Soul fire (rare, spooky)
+                if (rand.nextInt(8) == 0) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p) + 1;
+                    m.set(wx, h, wz);
+                    if (world.getBlockState(m).isAir())
+                        world.setBlockState(m, Blocks.SOUL_FIRE.getDefaultState(), 3);
+                }
+            }
+            case "BUILDINGS" -> {  // jazz: mossy boulders, lanterns, vines
+                if (rand.nextInt(6) == 0) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p);
+                    // Mossy cobblestone boulder cluster
+                    for (int[] d : new int[][]{{0,0},{1,0},{-1,0},{0,1},{0,-1}}) {
+                        if (d[0] != 0 && rand.nextBoolean()) continue;
+                        int bx = wx + d[0], bz = wz + d[1];
+                        m.set(bx, computeHeight(bx, bz, p) + 1, bz);
+                        if (world.getBlockState(m).isAir())
+                            world.setBlockState(m, Blocks.MOSSY_COBBLESTONE.getDefaultState(), 3);
+                    }
+                }
+                // Lanterns
+                for (int i = 0; i < rand.nextInt(3); i++) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p) + 1;
+                    m.set(wx, h, wz);
+                    if (world.getBlockState(m).isAir())
+                        world.setBlockState(m, Blocks.LANTERN.getDefaultState(), 3);
+                }
+            }
+            case "COLUMNS" -> {  // classical: flower fields, torches
+                BlockState[] flowers = {Blocks.DANDELION.getDefaultState(),
+                    Blocks.POPPY.getDefaultState(), Blocks.BLUE_ORCHID.getDefaultState(),
+                    Blocks.ALLIUM.getDefaultState(), Blocks.AZURE_BLUET.getDefaultState(),
+                    Blocks.OXEYE_DAISY.getDefaultState(), Blocks.CORNFLOWER.getDefaultState()};
+                for (int i = 0; i < 4 + rand.nextInt(8); i++) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p) + 1;
+                    m.set(wx, h, wz);
+                    if (world.getBlockState(m).isAir())
+                        world.setBlockState(m, flowers[rand.nextInt(flowers.length)], 3);
+                }
+                if (rand.nextInt(8) == 0) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    m.set(wx, computeHeight(wx, wz, p) + 1, wz);
+                    if (world.getBlockState(m).isAir())
+                        world.setBlockState(m, Blocks.TORCH.getDefaultState(), 3);
+                }
+            }
+            case "PLATFORMS" -> {  // hiphop: coloured concrete splashes, dead bushes
+                BlockState[] concretes = {Blocks.CYAN_CONCRETE.getDefaultState(),
+                    Blocks.MAGENTA_CONCRETE.getDefaultState(),
+                    Blocks.YELLOW_CONCRETE.getDefaultState(),
+                    Blocks.LIME_CONCRETE.getDefaultState(),
+                    Blocks.ORANGE_CONCRETE.getDefaultState()};
+                for (int i = 0; i < rand.nextInt(4); i++) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p);
+                    m.set(wx, h, wz);
+                    world.setBlockState(m, concretes[rand.nextInt(concretes.length)], 3);
+                }
+                for (int i = 0; i < 2 + rand.nextInt(4); i++) {
+                    if (rand.nextInt(3) != 0) continue;
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p) + 1;
+                    m.set(wx, h, wz);
+                    if (world.getBlockState(m).isAir())
+                        world.setBlockState(m, Blocks.DEAD_BUSH.getDefaultState(), 3);
+                }
+            }
+            case "NONE" -> {  // electronic: end rods as antennae, glowstone blobs
+                for (int i = 0; i < rand.nextInt(3); i++) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p);
+                    int rodH = 2 + rand.nextInt(5);
+                    for (int y = 1; y <= rodH; y++) {
+                        m.set(wx, h + y, wz);
+                        world.setBlockState(m, Blocks.END_ROD.getDefaultState(), 3);
+                    }
+                }
+                if (rand.nextInt(4) == 0) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p);
+                    for (int dx = -1; dx <= 1; dx++)
+                        for (int dz = -1; dz <= 1; dz++) {
+                            if (rand.nextBoolean()) continue;
+                            m.set(wx + dx, h + 1, wz + dz);
+                            if (world.getBlockState(m).isAir())
+                                world.setBlockState(m, Blocks.GLOWSTONE.getDefaultState(), 3);
+                        }
+                }
+            }
+            case "GAZEBOS" -> {  // pop: flower explosion, bee nests, sunflowers
+                BlockState[] flowers2 = {Blocks.DANDELION.getDefaultState(),
+                    Blocks.POPPY.getDefaultState(), Blocks.CORNFLOWER.getDefaultState(),
+                    Blocks.PINK_TULIP.getDefaultState(), Blocks.WHITE_TULIP.getDefaultState(),
+                    Blocks.ORANGE_TULIP.getDefaultState(), Blocks.RED_TULIP.getDefaultState()};
+                for (int i = 0; i < 6 + rand.nextInt(12); i++) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p) + 1;
+                    m.set(wx, h, wz);
+                    if (world.getBlockState(m).isAir())
+                        world.setBlockState(m, flowers2[rand.nextInt(flowers2.length)], 3);
+                }
+                // Sunflower rows (distinctive, facing east)
+                if (rand.nextInt(4) == 0) {
+                    int wx = startX + rand.nextInt(12);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p) + 1;
+                    for (int dx = 0; dx < 3 + rand.nextInt(3); dx++) {
+                        m.set(wx + dx, h, wz);
+                        if (world.getBlockState(m).isAir())
+                            world.setBlockState(m, Blocks.SUNFLOWER.getDefaultState(), 3);
+                        m.set(wx + dx, h + 1, wz);
+                        if (world.getBlockState(m).isAir())
+                            world.setBlockState(m, Blocks.SUNFLOWER.getDefaultState(), 3);
+                    }
+                }
+            }
+            case "RUINS" -> {  // ambient: huge mushrooms, sculk patches on surface
+                if (rand.nextInt(12) == 0) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p) + 1;
+                    placeHugeMushroom(world, wx, h, wz, rand);
+                }
+                if (rand.nextInt(6) == 0) {
+                    int wx = startX + rand.nextInt(16);
+                    int wz = startZ + rand.nextInt(16);
+                    int h = computeHeight(wx, wz, p);
+                    for (int dx = -2; dx <= 2; dx++)
+                        for (int dz = -2; dz <= 2; dz++) {
+                            if (rand.nextInt(3) == 0) continue;
+                            m.set(wx + dx, h, wz + dz);
+                            world.setBlockState(m, Blocks.SCULK.getDefaultState(), 3);
+                        }
+                }
+            }
+        }
+    }
+
+    /** Huge brown mushroom: stem 5-9 high, 5x5 cap with random trim */
+    private void placeHugeMushroom(StructureWorldAccess world, int x, int y, int z, Random rand) {
+        int stemH = 5 + rand.nextInt(5);
+        BlockPos.Mutable m = new BlockPos.Mutable();
+        for (int dy = 0; dy < stemH; dy++) {
+            m.set(x, y + dy, z);
+            world.setBlockState(m, Blocks.MUSHROOM_STEM.getDefaultState(), 3);
+        }
+        int capY = y + stemH;
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                if (Math.abs(dx) == 2 && Math.abs(dz) == 2 && rand.nextBoolean()) continue;
+                m.set(x + dx, capY, z + dz);
+                world.setBlockState(m, Blocks.BROWN_MUSHROOM_BLOCK.getDefaultState(), 3);
+            }
+        }
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                m.set(x + dx, capY + 1, z + dz);
+                world.setBlockState(m, Blocks.BROWN_MUSHROOM_BLOCK.getDefaultState(), 3);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Structures — 10% of chunks, fully randomised per placement
     // -------------------------------------------------------------------------
 
     private void placeStructure(StructureWorldAccess world, GenreProfile p,
                                 int startX, int startZ, int chunkX, int chunkZ, Random rand) {
-        // Seeded 10% trigger
         Random triggerRand = Random.create(chunkX * 1234567891L ^ chunkZ * 987654321L);
         if (triggerRand.nextInt(10) != 0) return;
 
-        // Place at chunk centre
-        int cx = startX + 8;
-        int cz = startZ + 8;
+        // Vary position within chunk so structures aren't always centred
+        int cx = startX + 4 + rand.nextInt(8);
+        int cz = startZ + 4 + rand.nextInt(8);
         int groundY = computeHeight(cx, cz, p);
 
         switch (p.structureType) {
-            case "PILLARS"    -> buildPillar(world, cx, groundY, cz);
-            case "BUILDINGS"  -> buildBuilding(world, cx, groundY, cz);
-            case "COLUMNS"    -> buildColumns(world, cx, groundY, cz);
-            case "PLATFORMS"  -> buildPlatform(world, cx, groundY, cz);
+            case "PILLARS"    -> buildPillar(world, cx, groundY, cz, rand);
+            case "BUILDINGS"  -> buildBuilding(world, cx, groundY, cz, rand);
+            case "COLUMNS"    -> buildColumns(world, cx, groundY, cz, rand);
+            case "PLATFORMS"  -> buildPlatform(world, cx, groundY, cz, rand);
             case "GAZEBOS"    -> buildGazebo(world, cx, groundY, cz, rand);
             case "RUINS"      -> buildRuin(world, cx, groundY, cz, rand);
-            // NONE — no structure
         }
     }
 
-    // PILLARS (Metal): 5x5 BLACKSTONE base, OBSIDIAN pillar 15-25 high, LAVA on top
-    private void buildPillar(StructureWorldAccess world, int cx, int groundY, int cz) {
-        Random r = Random.create(cx * 31L + cz);
-        int height = 15 + r.nextInt(11);
+    // PILLARS (Metal): obsidian pillar(s), varying height, lava or crying obsidian cap
+    private void buildPillar(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
+        int height = 15 + rand.nextInt(16);  // 15-30
+        boolean doublePillar = rand.nextInt(3) == 0;
+        BlockState capBlock = rand.nextBoolean() ? Blocks.LAVA.getDefaultState()
+                                                 : Blocks.CRYING_OBSIDIAN.getDefaultState();
         BlockPos.Mutable m = new BlockPos.Mutable();
 
-        for (int dx = -2; dx <= 2; dx++)
-            for (int dz = -2; dz <= 2; dz++) {
+        // Base slab (3x3 or 5x5)
+        int baseR = rand.nextBoolean() ? 1 : 2;
+        for (int dx = -baseR; dx <= baseR; dx++)
+            for (int dz = -baseR; dz <= baseR; dz++) {
                 m.set(cx + dx, groundY, cz + dz);
                 world.setBlockState(m, Blocks.BLACKSTONE.getDefaultState(), 3);
             }
 
+        // Main pillar
         for (int y = 1; y <= height; y++) {
             m.set(cx, groundY + y, cz);
             world.setBlockState(m, Blocks.OBSIDIAN.getDefaultState(), 3);
         }
         m.set(cx, groundY + height + 1, cz);
-        world.setBlockState(m, Blocks.LAVA.getDefaultState(), 3);
+        world.setBlockState(m, capBlock, 3);
+
+        // Second pillar offset from first
+        if (doublePillar) {
+            int ox = cx + (rand.nextBoolean() ? 5 : -5);
+            int oz = cz + (rand.nextBoolean() ? 5 : -5);
+            int h2 = 8 + rand.nextInt(12);
+            int gy2 = computeHeight(ox, oz, WorldGenConfig.getActive());
+            for (int y = 1; y <= h2; y++) {
+                m.set(ox, gy2 + y, oz);
+                world.setBlockState(m, Blocks.OBSIDIAN.getDefaultState(), 3);
+            }
+            m.set(ox, gy2 + h2 + 1, oz);
+            world.setBlockState(m, Blocks.LAVA.getDefaultState(), 3);
+        }
     }
 
-    // BUILDINGS (Jazz): 7x7 stone bricks floor, 4-high walls, oak planks roof, south entrance
-    private void buildBuilding(StructureWorldAccess world, int cx, int groundY, int cz) {
+    // BUILDINGS (Jazz): stone brick building, varied size and material, random entrance side
+    private void buildBuilding(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
+        int halfW = 3 + rand.nextInt(3);  // 3-5, so footprint 7x7 to 11x11
+        int wallH = 3 + rand.nextInt(3);  // 3-5
         BlockPos.Mutable m = new BlockPos.Mutable();
 
+        // Wall material varies
+        BlockState[] wallMats = {Blocks.STONE_BRICKS.getDefaultState(),
+            Blocks.MOSSY_STONE_BRICKS.getDefaultState(),
+            Blocks.COBBLESTONE.getDefaultState()};
+        BlockState wall = wallMats[rand.nextInt(wallMats.length)];
+        BlockState roof = rand.nextBoolean() ? Blocks.OAK_PLANKS.getDefaultState()
+                                             : Blocks.DARK_OAK_PLANKS.getDefaultState();
+
         // Floor
-        for (int dx = -3; dx <= 3; dx++)
-            for (int dz = -3; dz <= 3; dz++) {
+        for (int dx = -halfW; dx <= halfW; dx++)
+            for (int dz = -halfW; dz <= halfW; dz++) {
                 m.set(cx + dx, groundY, cz + dz);
-                world.setBlockState(m, Blocks.STONE_BRICKS.getDefaultState(), 3);
+                world.setBlockState(m, wall, 3);
             }
 
-        // Walls (4 high), south wall has 2-block gap for entrance (dz == 3, dx in -1..1)
-        for (int y = 1; y <= 4; y++) {
-            for (int dx = -3; dx <= 3; dx++) {
-                for (int dz = -3; dz <= 3; dz++) {
-                    boolean isWall = (dx == -3 || dx == 3 || dz == -3 || dz == 3);
+        // Entrance on a random side (0=south, 1=north, 2=east, 3=west)
+        int entranceSide = rand.nextInt(4);
+        for (int y = 1; y <= wallH; y++) {
+            for (int dx = -halfW; dx <= halfW; dx++) {
+                for (int dz = -halfW; dz <= halfW; dz++) {
+                    boolean isWall = (dx == -halfW || dx == halfW || dz == -halfW || dz == halfW);
                     if (!isWall) continue;
-                    boolean isSouthEntrance = (dz == 3 && dx >= -1 && dx <= 1 && y <= 2);
-                    if (isSouthEntrance) continue;
+                    boolean isEntrance = switch (entranceSide) {
+                        case 0 -> dz == halfW && dx >= -1 && dx <= 1 && y <= 2;
+                        case 1 -> dz == -halfW && dx >= -1 && dx <= 1 && y <= 2;
+                        case 2 -> dx == halfW && dz >= -1 && dz <= 1 && y <= 2;
+                        default -> dx == -halfW && dz >= -1 && dz <= 1 && y <= 2;
+                    };
+                    if (isEntrance) continue;
                     m.set(cx + dx, groundY + y, cz + dz);
-                    world.setBlockState(m, Blocks.STONE_BRICKS.getDefaultState(), 3);
+                    world.setBlockState(m, wall, 3);
                 }
             }
         }
 
         // Roof
-        for (int dx = -3; dx <= 3; dx++)
-            for (int dz = -3; dz <= 3; dz++) {
-                m.set(cx + dx, groundY + 5, cz + dz);
-                world.setBlockState(m, Blocks.OAK_PLANKS.getDefaultState(), 3);
+        for (int dx = -halfW; dx <= halfW; dx++)
+            for (int dz = -halfW; dz <= halfW; dz++) {
+                m.set(cx + dx, groundY + wallH + 1, cz + dz);
+                world.setBlockState(m, roof, 3);
             }
+
+        // Interior torch
+        m.set(cx, groundY + 1, cz);
+        world.setBlockState(m, Blocks.TORCH.getDefaultState(), 3);
     }
 
-    // COLUMNS (Classical): QUARTZ_PILLAR columns at corners, 12 high, QUARTZ_SLAB beams
-    private void buildColumns(StructureWorldAccess world, int cx, int groundY, int cz) {
+    // COLUMNS (Classical): quartz pillars, varying height and spacing, optional interior floor
+    private void buildColumns(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
+        int colH = 8 + rand.nextInt(9);   // 8-16
+        int spacing = rand.nextBoolean() ? 4 : 5;  // tighter or wider
         BlockPos.Mutable m = new BlockPos.Mutable();
-        int[][] corners = {{-3, -3}, {-3, 3}, {3, -3}, {3, 3}};
+        int[][] corners = {{-spacing, -spacing}, {-spacing, spacing},
+                           {spacing, -spacing}, {spacing, spacing}};
 
+        // Columns
         for (int[] c : corners) {
-            for (int y = 0; y <= 12; y++) {
+            for (int y = 0; y <= colH; y++) {
                 m.set(cx + c[0], groundY + y, cz + c[1]);
                 world.setBlockState(m, Blocks.QUARTZ_PILLAR.getDefaultState(), 3);
             }
         }
 
-        // Beams connecting tops
-        int topY = groundY + 12;
-        for (int dx = -3; dx <= 3; dx++) {
-            m.set(cx + dx, topY, cz - 3);
+        // Top beams
+        int topY = groundY + colH;
+        for (int dx = -spacing; dx <= spacing; dx++) {
+            m.set(cx + dx, topY, cz - spacing);
             world.setBlockState(m, Blocks.QUARTZ_SLAB.getDefaultState(), 3);
-            m.set(cx + dx, topY, cz + 3);
+            m.set(cx + dx, topY, cz + spacing);
             world.setBlockState(m, Blocks.QUARTZ_SLAB.getDefaultState(), 3);
         }
-        for (int dz = -3; dz <= 3; dz++) {
-            m.set(cx - 3, topY, cz + dz);
+        for (int dz = -spacing; dz <= spacing; dz++) {
+            m.set(cx - spacing, topY, cz + dz);
             world.setBlockState(m, Blocks.QUARTZ_SLAB.getDefaultState(), 3);
-            m.set(cx + 3, topY, cz + dz);
+            m.set(cx + spacing, topY, cz + dz);
             world.setBlockState(m, Blocks.QUARTZ_SLAB.getDefaultState(), 3);
+        }
+
+        // Optional interior floor (40% chance)
+        if (rand.nextInt(5) < 2) {
+            for (int dx = -(spacing - 1); dx <= spacing - 1; dx++)
+                for (int dz = -(spacing - 1); dz <= spacing - 1; dz++) {
+                    m.set(cx + dx, groundY, cz + dz);
+                    world.setBlockState(m, Blocks.SMOOTH_QUARTZ.getDefaultState(), 3);
+                }
+            // Central pedestal with item frame or beacon base
+            m.set(cx, groundY + 1, cz);
+            world.setBlockState(m, Blocks.GOLD_BLOCK.getDefaultState(), 3);
         }
     }
 
-    // PLATFORMS (Hiphop): 10x10 GRAY_CONCRETE elevated 8 blocks on IRON_BARS, GLOWSTONE border
-    private void buildPlatform(StructureWorldAccess world, int cx, int groundY, int cz) {
+    // PLATFORMS (Hiphop): elevated concrete platform, varying size/height/edge material
+    private void buildPlatform(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
+        int halfW = 4 + rand.nextInt(3);       // 4-6, footprint 9x9 to 13x13
+        int platformH = 6 + rand.nextInt(7);   // 6-12 block elevation
+        int platformY = groundY + platformH;
         BlockPos.Mutable m = new BlockPos.Mutable();
-        int platformY = groundY + 8;
 
-        // Stilts
-        for (int dx = -4; dx <= 4; dx += 4)
-            for (int dz = -4; dz <= 4; dz += 4)
-                for (int y = 1; y < 8; y++) {
-                    m.set(cx + dx, groundY + y, cz + dz);
-                    world.setBlockState(m, Blocks.IRON_BARS.getDefaultState(), 3);
-                }
+        // Edge material: glowstone or sea lantern
+        BlockState edgeMat = rand.nextBoolean() ? Blocks.GLOWSTONE.getDefaultState()
+                                                : Blocks.SEA_LANTERN.getDefaultState();
+        // Floor material: pick from concrete colours
+        BlockState[] floors = {Blocks.GRAY_CONCRETE.getDefaultState(),
+            Blocks.BLACK_CONCRETE.getDefaultState(), Blocks.CYAN_CONCRETE.getDefaultState()};
+        BlockState floorMat = floors[rand.nextInt(floors.length)];
+
+        // Corner stilts (iron bars)
+        int[][] stiltCorners = {{-halfW, -halfW}, {-halfW, halfW}, {halfW, -halfW}, {halfW, halfW}};
+        for (int[] sc : stiltCorners)
+            for (int y = 1; y < platformH; y++) {
+                m.set(cx + sc[0], groundY + y, cz + sc[1]);
+                world.setBlockState(m, Blocks.IRON_BARS.getDefaultState(), 3);
+            }
 
         // Platform floor
-        for (int dx = -4; dx <= 4; dx++)
-            for (int dz = -4; dz <= 4; dz++) {
-                boolean isBorder = (dx == -4 || dx == 4 || dz == -4 || dz == 4);
+        for (int dx = -halfW; dx <= halfW; dx++)
+            for (int dz = -halfW; dz <= halfW; dz++) {
+                boolean isBorder = (dx == -halfW || dx == halfW || dz == -halfW || dz == halfW);
                 m.set(cx + dx, platformY, cz + dz);
-                world.setBlockState(m,
-                        isBorder ? Blocks.GLOWSTONE.getDefaultState()
-                                 : Blocks.GRAY_CONCRETE.getDefaultState(), 3);
+                world.setBlockState(m, isBorder ? edgeMat : floorMat, 3);
             }
+
+        // Optional ladder staircase on one random side
+        int lx = cx + (rand.nextBoolean() ? halfW : -halfW);
+        for (int y = 1; y < platformH; y++) {
+            m.set(lx, groundY + y, cz);
+            world.setBlockState(m, Blocks.LADDER.getDefaultState(), 3);
+        }
     }
 
-    // GAZEBOS (Pop): 5x5 OAK_PLANKS floor, OAK_FENCE corners 3 high, OAK_SLAB roof, flowers
+    // GAZEBOS (Pop): varied wood type, optional second floor, flower ring
     private void buildGazebo(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
         BlockPos.Mutable m = new BlockPos.Mutable();
+        int halfW = 2 + rand.nextInt(2);   // 2-3
+
+        // Wood type varies
+        BlockState[] planks = {Blocks.OAK_PLANKS.getDefaultState(),
+            Blocks.BIRCH_PLANKS.getDefaultState(), Blocks.JUNGLE_PLANKS.getDefaultState()};
+        BlockState[] fences = {Blocks.OAK_FENCE.getDefaultState(),
+            Blocks.BIRCH_FENCE.getDefaultState(), Blocks.JUNGLE_FENCE.getDefaultState()};
+        BlockState[] slabs = {Blocks.OAK_SLAB.getDefaultState(),
+            Blocks.BIRCH_SLAB.getDefaultState(), Blocks.JUNGLE_SLAB.getDefaultState()};
+        int woodIdx = rand.nextInt(3);
+        BlockState plank = planks[woodIdx], fence = fences[woodIdx], slab = slabs[woodIdx];
 
         // Floor
-        for (int dx = -2; dx <= 2; dx++)
-            for (int dz = -2; dz <= 2; dz++) {
+        for (int dx = -halfW; dx <= halfW; dx++)
+            for (int dz = -halfW; dz <= halfW; dz++) {
                 m.set(cx + dx, groundY, cz + dz);
-                world.setBlockState(m, Blocks.OAK_PLANKS.getDefaultState(), 3);
+                world.setBlockState(m, plank, 3);
             }
 
-        // Fence corners 3 high
-        int[][] corners = {{-2, -2}, {-2, 2}, {2, -2}, {2, 2}};
+        // Fence posts at corners, height 2-3
+        int postH = 2 + rand.nextInt(2);
+        int[][] corners = {{-halfW, -halfW}, {-halfW, halfW}, {halfW, -halfW}, {halfW, halfW}};
         for (int[] c : corners)
-            for (int y = 1; y <= 3; y++) {
+            for (int y = 1; y <= postH; y++) {
                 m.set(cx + c[0], groundY + y, cz + c[1]);
-                world.setBlockState(m, Blocks.OAK_FENCE.getDefaultState(), 3);
+                world.setBlockState(m, fence, 3);
             }
 
         // Roof
-        for (int dx = -2; dx <= 2; dx++)
-            for (int dz = -2; dz <= 2; dz++) {
-                m.set(cx + dx, groundY + 4, cz + dz);
-                world.setBlockState(m, Blocks.OAK_SLAB.getDefaultState(), 3);
+        for (int dx = -halfW; dx <= halfW; dx++)
+            for (int dz = -halfW; dz <= halfW; dz++) {
+                m.set(cx + dx, groundY + postH + 1, cz + dz);
+                world.setBlockState(m, slab, 3);
             }
 
-        // Flowers within 3 block radius
-        BlockState[] flowers = {
-                Blocks.DANDELION.getDefaultState(),
-                Blocks.POPPY.getDefaultState(),
-                Blocks.BLUE_ORCHID.getDefaultState(),
-                Blocks.ALLIUM.getDefaultState()
-        };
-        for (int dx = -3; dx <= 3; dx++)
-            for (int dz = -3; dz <= 3; dz++) {
-                if (rand.nextInt(3) == 0) {
-                    int fx = cx + dx;
-                    int fz = cz + dz;
-                    int fy = computeHeight(fx, fz, WorldGenConfig.getActive()) + 1;
-                    m.set(fx, fy, fz);
-                    if (world.getBlockState(m).isAir()) {
-                        world.setBlockState(m, flowers[rand.nextInt(flowers.length)], 3);
-                    }
+        // Optional second floor (25% chance)
+        if (rand.nextInt(4) == 0) {
+            int upperY = groundY + postH + 2;
+            for (int dx = -(halfW - 1); dx <= halfW - 1; dx++)
+                for (int dz = -(halfW - 1); dz <= halfW - 1; dz++) {
+                    m.set(cx + dx, upperY, cz + dz);
+                    world.setBlockState(m, plank, 3);
                 }
+        }
+
+        // Flower ring (random radius 2-4)
+        BlockState[] flowers = {Blocks.DANDELION.getDefaultState(), Blocks.POPPY.getDefaultState(),
+            Blocks.BLUE_ORCHID.getDefaultState(), Blocks.ALLIUM.getDefaultState(),
+            Blocks.CORNFLOWER.getDefaultState(), Blocks.PINK_TULIP.getDefaultState()};
+        int flowerR = 2 + rand.nextInt(3);
+        for (int dx = -flowerR; dx <= flowerR; dx++)
+            for (int dz = -flowerR; dz <= flowerR; dz++) {
+                if (rand.nextInt(3) != 0) continue;
+                int fx = cx + dx, fz = cz + dz;
+                int fy = computeHeight(fx, fz, WorldGenConfig.getActive()) + 1;
+                m.set(fx, fy, fz);
+                if (world.getBlockState(m).isAir())
+                    world.setBlockState(m, flowers[rand.nextInt(flowers.length)], 3);
             }
     }
 
-    // RUINS (Ambient): partial 6x6 MOSSY_COBBLESTONE, 40% blocks removed, interior WATER
+    // RUINS (Ambient): crumbling walls, varying size/height, rubble scatter, optional water pool
     private void buildRuin(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
         BlockPos.Mutable m = new BlockPos.Mutable();
-        Random ruinRand = Random.create(cx * 77777L + cz);
+        int halfW = 3 + rand.nextInt(3);  // 3-5
+        int wallH = 2 + rand.nextInt(4);  // 2-5
+        float decayRate = 0.3f + rand.nextFloat() * 0.4f;  // 30-70% blocks removed
 
-        // Walls 3 high
-        for (int y = 0; y <= 3; y++) {
-            for (int dx = -3; dx <= 3; dx++) {
-                for (int dz = -3; dz <= 3; dz++) {
-                    boolean isWall = (dx == -3 || dx == 3 || dz == -3 || dz == 3);
+        // Wall material varies
+        BlockState[] wallMats = {Blocks.MOSSY_COBBLESTONE.getDefaultState(),
+            Blocks.COBBLESTONE.getDefaultState(), Blocks.STONE_BRICKS.getDefaultState(),
+            Blocks.MOSSY_STONE_BRICKS.getDefaultState()};
+        BlockState wallMat = wallMats[rand.nextInt(wallMats.length)];
+
+        // Walls
+        for (int y = 0; y <= wallH; y++) {
+            for (int dx = -halfW; dx <= halfW; dx++) {
+                for (int dz = -halfW; dz <= halfW; dz++) {
+                    boolean isWall = (dx == -halfW || dx == halfW || dz == -halfW || dz == halfW);
                     if (!isWall) continue;
-                    if (ruinRand.nextFloat() < 0.4f) continue; // remove 40%
+                    if (rand.nextFloat() < decayRate) continue;
                     m.set(cx + dx, groundY + y, cz + dz);
-                    world.setBlockState(m, Blocks.MOSSY_COBBLESTONE.getDefaultState(), 3);
+                    world.setBlockState(m, wallMat, 3);
                 }
             }
         }
 
-        // Interior water
-        for (int dx = -2; dx <= 2; dx++)
-            for (int dz = -2; dz <= 2; dz++) {
-                m.set(cx + dx, groundY, cz + dz);
-                world.setBlockState(m, Blocks.WATER.getDefaultState(), 3);
+        // Rubble scatter inside (25% of interior)
+        for (int dx = -(halfW - 1); dx <= halfW - 1; dx++)
+            for (int dz = -(halfW - 1); dz <= halfW - 1; dz++) {
+                if (rand.nextInt(4) != 0) continue;
+                m.set(cx + dx, groundY + 1, cz + dz);
+                if (world.getBlockState(m).isAir())
+                    world.setBlockState(m, Blocks.COBBLESTONE.getDefaultState(), 3);
             }
+
+        // Water pool in interior (60% chance)
+        if (rand.nextInt(5) < 3) {
+            int poolR = Math.max(1, halfW - 2);
+            for (int dx = -poolR; dx <= poolR; dx++)
+                for (int dz = -poolR; dz <= poolR; dz++) {
+                    m.set(cx + dx, groundY, cz + dz);
+                    world.setBlockState(m, Blocks.WATER.getDefaultState(), 3);
+                }
+        }
     }
 
     // -------------------------------------------------------------------------
-    // Carve / populateEntities (no-ops — handled elsewhere)
+    // Carve / populateEntities
     // -------------------------------------------------------------------------
 
     @Override
@@ -650,7 +1058,7 @@ public class MusicChunkGenerator extends ChunkGenerator {
 
     @Override
     public void populateEntities(ChunkRegion region) {
-        // No entity spawning
+        // No-op: entity spawning handled by vanilla structure gen via setStructureStarts
     }
 
     // -------------------------------------------------------------------------
