@@ -197,7 +197,7 @@ CONFIG = {
     "rcon_host":      os.getenv("RCON_HOST", "127.0.0.1"),
     "rcon_port":      int(os.getenv("RCON_PORT", "25575")),
     "rcon_password":  os.getenv("RCON_PASSWORD", ""),
-    "poll_interval":  20,
+    "poll_interval":  5,
 }
 
 
