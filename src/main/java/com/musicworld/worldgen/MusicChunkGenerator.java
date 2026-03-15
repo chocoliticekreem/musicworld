@@ -148,13 +148,35 @@ public class MusicChunkGenerator extends ChunkGenerator {
         int minY = chunk.getBottomY();
         int maxY = chunk.getTopY();
 
+        // Pre-compute raw heights for a 20x20 region (chunk + 2-block border)
+        // so edge columns have neighbour data for smoothing.
+        int pad = 2;
+        int size = 16 + 2 * pad;
+        int[][] raw = new int[size][size];
+        for (int x = 0; x < size; x++)
+            for (int z = 0; z < size; z++)
+                raw[x][z] = computeHeight(startX - pad + x, startZ - pad + z, p);
+
+        // 3x3 box-average smoothing — softens the staircase steps at terrain edges.
+        // Only applied to the inner 16x16 (the actual chunk columns).
+        int[][] smoothed = new int[16][16];
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int sum = 0;
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                        sum += raw[x + pad + dx][z + pad + dz];
+                smoothed[x][z] = (int) Math.round(sum / 9.0);
+            }
+        }
+
         BlockPos.Mutable mpos = new BlockPos.Mutable();
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 int worldX = startX + x;
                 int worldZ = startZ + z;
-                int finalH = computeHeight(worldX, worldZ, p);
+                int finalH = smoothed[x][z];
                 Random colRand = Random.create(worldX * 31L + worldZ);
 
                 for (int y = minY; y < maxY; y++) {
@@ -863,20 +885,30 @@ public class MusicChunkGenerator extends ChunkGenerator {
 
     private void groundStructure(StructureWorldAccess world, int cx, int cz, int groundY,
                                  int halfW, BlockState fill, GenreProfile p) {
-        int[] corners = {
-            computeHeight(cx - halfW, cz - halfW, p),
-            computeHeight(cx + halfW, cz - halfW, p),
-            computeHeight(cx - halfW, cz + halfW, p),
-            computeHeight(cx + halfW, cz + halfW, p)
-        };
-        int depth = StructureGeometry.groundingDepth(groundY, corners);
+        // Sample every column in the footprint to find the highest terrain point.
+        // Fill from that highest point downward so the structure sits flush on hills,
+        // not floating above the highest corner.
+        int highest = groundY;
+        for (int dx = -halfW; dx <= halfW; dx++)
+            for (int dz = -halfW; dz <= halfW; dz++) {
+                int h = computeHeight(cx + dx, cz + dz, p);
+                if (h > highest) highest = h;
+            }
+
+        int depth = StructureGeometry.groundingDepth(highest,
+            new int[]{
+                computeHeight(cx - halfW, cz - halfW, p),
+                computeHeight(cx + halfW, cz - halfW, p),
+                computeHeight(cx - halfW, cz + halfW, p),
+                computeHeight(cx + halfW, cz + halfW, p)
+            });
         if (depth <= 0) return;
+
         BlockPos.Mutable m = new BlockPos.Mutable();
         for (int dx = -halfW; dx <= halfW; dx++)
             for (int dz = -halfW; dz <= halfW; dz++)
-                for (int dy = 1; dy <= depth; dy++) {
-                    m.set(cx + dx, groundY - dy, cz + dz);
-                    if (!world.getBlockState(m).isAir()) break;
+                for (int dy = 0; dy <= depth; dy++) {
+                    m.set(cx + dx, highest - dy, cz + dz);
                     world.setBlockState(m, fill, 3);
                 }
     }
