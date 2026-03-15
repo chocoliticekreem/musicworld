@@ -3,6 +3,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import importlib
+import time
 import musecraft
 from unittest.mock import patch
 
@@ -193,7 +194,7 @@ def test_synced_scroller_stops_early(monkeypatch):
         rcon_port=25575,
     )
     scroller.start()
-    import time as t; t.sleep(0.2)
+    time.sleep(0.2)
     scroller.stop()
     scroller._thread.join(timeout=2)
     assert any("Line one" in c for c in commands_sent)
