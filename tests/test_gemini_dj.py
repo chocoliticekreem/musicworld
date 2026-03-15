@@ -31,6 +31,7 @@ def test_get_dj_intro_returns_eleven_lines(monkeypatch):
     )
     assert lines is not None
     assert len(lines) == 11
+    assert "Now Playing" in lines[0] or "Creeper" in lines[0]
 
 
 def test_get_dj_intro_returns_none_on_failure(monkeypatch):

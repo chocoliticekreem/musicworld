@@ -140,6 +140,7 @@ def fetch_lyrics_with_timestamps(track, artist):
                 if text:
                     ts_ms = int((minutes * 60 + seconds) * 1000)
                     results.append((ts_ms, text))
+        results.sort(key=lambda x: x[0])
         return results
     except Exception:
         return []
