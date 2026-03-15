@@ -77,14 +77,13 @@ Automatically runs `/genworld <genre>` when the genre of your current Spotify tr
 
 1. Install dependency:
    ```bash
-   pip install mcrcon
+   pip install mcrcon syncedlyrics
    ```
 2. Get a free Last.fm API key at [last.fm/api](https://www.last.fm/api) (takes 2 minutes)
 3. Create a `.env` file in the repo root:
    ```
    LASTFM_API_KEY=your_lastfm_key
    RCON_PASSWORD=yourpassword
-   GENIUS_API_KEY=your_genius_key   # optional — lyrics scroll in Minecraft chat
    ```
 4. Start the script:
    ```bash
@@ -93,8 +92,6 @@ Automatically runs `/genworld <genre>` when the genre of your current Spotify tr
 
 The script polls every 20 seconds. When it detects a genre change it fires `/genworld <genre>` automatically. Works best with popular artists — obscure tracks with no Last.fm tags will keep the current genre.
 
-- Set `ENABLE_LYRICS = False` in `scripts/musecraft.py` to disable lyrics entirely.
-- Get a free Genius API key at genius.com/api-clients (takes 2 minutes).
 
 ### Gemini DJ (optional)
 
