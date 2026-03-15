@@ -209,6 +209,32 @@ def get_spotify_position():
         return None
 
 
+def _rcon_say(host, password, port, message, timeout=5):
+    """Send a /say command via raw RCON socket. Safe to call from any thread."""
+    import socket as _socket
+    import struct as _struct
+    def _pack(req_id, req_type, payload):
+        data = payload.encode('utf-8') + b'\x00\x00'
+        return _struct.pack('<iii', len(data) + 8, req_id, req_type) + data
+    def _recv(sock):
+        raw = b''
+        while len(raw) < 4:
+            raw += sock.recv(4 - len(raw))
+        length = _struct.unpack('<i', raw)[0]
+        data = b''
+        while len(data) < length:
+            data += sock.recv(length - len(data))
+        return _struct.unpack('<ii', data[:8])[0], data[8:-2].decode('utf-8')
+    s = _socket.create_connection((host, port), timeout=timeout)
+    try:
+        s.sendall(_pack(1, 3, password))  # auth
+        _recv(s)
+        s.sendall(_pack(2, 2, f"/say {message}"))
+        _recv(s)
+    finally:
+        s.close()
+
+
 class SyncedScroller:
     """
     Scrolls timestamped lyric lines in Minecraft chat synced to Spotify playback.
@@ -247,8 +273,7 @@ class SyncedScroller:
             if self._stop_event.is_set():
                 return
             try:
-                with MCRcon(self._host, self._password, port=self._port, timeout=0) as mcr:
-                    mcr.command(f"/say ♪ {line}")
+                _rcon_say(self._host, self._password, self._port, f"♪ {line}")
             except Exception as e:
                 print(f"  SyncedScroller RCON error: {e}")
 

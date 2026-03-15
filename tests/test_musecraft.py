@@ -151,15 +151,10 @@ def test_get_spotify_position_returns_none_on_failure(monkeypatch):
 def test_synced_scroller_sends_lines(monkeypatch):
     commands_sent = []
 
-    class FakeMCRcon:
-        def __init__(self, host, password, port): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def command(self, cmd):
-            commands_sent.append(cmd)
-            return ""
+    def fake_rcon_say(host, password, port, message, timeout=5):
+        commands_sent.append(message)
 
-    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
+    monkeypatch.setattr(musecraft, '_rcon_say', fake_rcon_say)
     monkeypatch.setattr(musecraft, 'get_spotify_position', lambda: 0)
 
     scroller = musecraft.SyncedScroller(
@@ -176,15 +171,10 @@ def test_synced_scroller_sends_lines(monkeypatch):
 def test_synced_scroller_stops_early(monkeypatch):
     commands_sent = []
 
-    class FakeMCRcon:
-        def __init__(self, host, password, port): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def command(self, cmd):
-            commands_sent.append(cmd)
-            return ""
+    def fake_rcon_say(host, password, port, message, timeout=5):
+        commands_sent.append(message)
 
-    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
+    monkeypatch.setattr(musecraft, '_rcon_say', fake_rcon_say)
     monkeypatch.setattr(musecraft, 'get_spotify_position', lambda: 0)
 
     scroller = musecraft.SyncedScroller(
