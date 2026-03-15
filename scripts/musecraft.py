@@ -5,6 +5,7 @@ except ImportError:
 
 import os
 import subprocess
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -103,6 +104,39 @@ def fetch_lyrics(track, artist, api_key):
         return lines
     except Exception:
         return []
+
+
+class LyricScroller:
+    """
+    Scrolls lyrics in Minecraft chat via RCON at a timed interval.
+    One line at a time. Stop by calling stop().
+    """
+
+    def __init__(self, lines, interval, rcon_host, rcon_password, rcon_port):
+        self._lines = lines
+        self._interval = interval
+        self._host = rcon_host
+        self._password = rcon_password
+        self._port = rcon_port
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+
+    def _run(self):
+        for line in self._lines:
+            if self._stop_event.is_set():
+                return
+            try:
+                with MCRcon(self._host, self._password, port=self._port) as mcr:
+                    mcr.command(f"/say \u266a {line}")
+            except Exception:
+                pass
+            self._stop_event.wait(self._interval)
 
 
 # weather: "thunder" | "rain" | "clear" | None (no change)
