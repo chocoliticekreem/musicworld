@@ -898,22 +898,19 @@ public class MusicChunkGenerator extends ChunkGenerator {
                 if (h > highest) highest = h;
             }
 
-        int depth = StructureGeometry.groundingDepth(highest,
-            new int[]{
-                computeHeight(cx - halfW, cz - halfW, p),
-                computeHeight(cx + halfW, cz - halfW, p),
-                computeHeight(cx - halfW, cz + halfW, p),
-                computeHeight(cx + halfW, cz + halfW, p)
-            });
-
-        if (depth > 0) {
-            BlockPos.Mutable m = new BlockPos.Mutable();
-            for (int dx = -halfW; dx <= halfW; dx++)
-                for (int dz = -halfW; dz <= halfW; dz++)
-                    for (int dy = 0; dy <= depth; dy++) {
-                        m.set(cx + dx, highest - dy, cz + dz);
-                        world.setBlockState(m, fill, 3);
-                    }
+        // Fill each column from its own terrain height up to `highest`,
+        // capped at MAX_GROUNDING_DEPTH. This prevents fill from appearing
+        // above the natural ground surface on lower-lying columns.
+        BlockPos.Mutable m = new BlockPos.Mutable();
+        for (int dx = -halfW; dx <= halfW; dx++) {
+            for (int dz = -halfW; dz <= halfW; dz++) {
+                int colH = computeHeight(cx + dx, cz + dz, p);
+                int fillFrom = Math.max(colH, highest - StructureGeometry.MAX_GROUNDING_DEPTH);
+                for (int y = fillFrom; y <= highest; y++) {
+                    m.set(cx + dx, y, cz + dz);
+                    world.setBlockState(m, fill, 3);
+                }
+            }
         }
         return highest;
     }

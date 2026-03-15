@@ -67,10 +67,10 @@ public class GenreProfile {
                 "STONE", "QUARTZ_BLOCK", "GRASS_BLOCK",
                 0.6f, 60, "COLUMNS"));
 
-        // hiphop: flat urban terrain, stone bulk, concrete accent surface, sparse trees
+        // hiphop: flat urban terrain, stone bulk, concrete accent, dirt surface
         GENRES.put("hiphop", new GenreProfile(
                 0.5f, 66, 0.3f, 0.6f,
-                "STONE", "GRAY_CONCRETE", "COARSE_DIRT",
+                "STONE", "GRAY_CONCRETE", "DIRT",
                 0.2f, 55, "PLATFORMS"));
 
         // electronic: alien hills, end stone bulk, soul sand surface, no trees
