@@ -1200,8 +1200,15 @@ public class MusicChunkGenerator extends ChunkGenerator {
             for (int i = 0; i < PSIZE; i++) GRADIENTS_3D[i] = grad3[i % grad3.length];
         }
 
-        // Permutation table seeded per call
+        // Permutation table cache — built once per seed, reused across all noise calls
+        private static final java.util.concurrent.ConcurrentHashMap<Long, int[]> PERM_CACHE =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
         private static int[] buildPerm(long seed) {
+            return PERM_CACHE.computeIfAbsent(seed, OpenSimplex2S::buildPermUncached);
+        }
+
+        private static int[] buildPermUncached(long seed) {
             int[] perm = new int[PSIZE];
             int[] source = new int[PSIZE];
             for (int i = 0; i < PSIZE; i++) source[i] = i;
