@@ -85,15 +85,35 @@ def detect_genre(track, artist, api_key):
     return None
 
 
+# weather: "thunder" | "rain" | "clear" | None (no change)
+# time: int (ticks) | None (no change)
+GENRE_ATMOSPHERE = {
+    "metal":      {"weather": "thunder", "time": 18000},
+    "jazz":       {"weather": "clear",   "time": 0},
+    "classical":  {"weather": "clear",   "time": 6000},
+    "hiphop":     {"weather": "clear",   "time": 6000},
+    "electronic": {"weather": "clear",   "time": 18000},
+    "pop":        {"weather": "clear",   "time": 6000},
+    "ambient":    {"weather": None,      "time": None},
+}
+
+
 def send_genworld(genre, host="127.0.0.1", password="", port=25575):
-    """Send /genworld <genre> to Minecraft via RCON."""
+    """Send /genworld <genre> + weather/time RCON commands."""
     if MCRcon is None:
         print("mcrcon not installed. Run: pip install mcrcon")
         return
+    atmosphere = GENRE_ATMOSPHERE.get(genre, {})
+    commands = [f"/genworld {genre}"]
+    if atmosphere.get("weather"):
+        commands.append(f"/weather {atmosphere['weather']}")
+    if atmosphere.get("time") is not None:
+        commands.append(f"/time set {atmosphere['time']}")
     try:
         with MCRcon(host, password, port=port) as mcr:
-            response = mcr.command(f"/genworld {genre}")
-            print(f"  RCON /genworld {genre} -> {response!r}")
+            for cmd in commands:
+                response = mcr.command(cmd)
+                print(f"  RCON {cmd!r} -> {response!r}")
     except ConnectionRefusedError:
         print(f"  RCON: server offline or RCON not enabled on port {port}")
     except Exception as e:

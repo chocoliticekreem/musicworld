@@ -62,4 +62,41 @@ def test_send_genworld_calls_rcon(monkeypatch):
 
     monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
     musecraft.send_genworld("hiphop", host="127.0.0.1", password="test", port=25575)
-    assert commands_sent == ["/genworld hiphop"]
+    assert "/genworld hiphop" in commands_sent
+    assert "/weather clear" in commands_sent
+    assert "/time set 6000" in commands_sent
+
+
+def test_genre_atmosphere_metal(monkeypatch):
+    commands_sent = []
+
+    class FakeMCRcon:
+        def __init__(self, host, password, port): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def command(self, cmd):
+            commands_sent.append(cmd)
+            return ""
+
+    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
+    musecraft.send_genworld("metal", host="127.0.0.1", password="test", port=25575)
+    assert "/genworld metal" in commands_sent
+    assert "/weather thunder" in commands_sent
+    assert "/time set 18000" in commands_sent
+
+def test_genre_atmosphere_ambient_no_change(monkeypatch):
+    commands_sent = []
+
+    class FakeMCRcon:
+        def __init__(self, host, password, port): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def command(self, cmd):
+            commands_sent.append(cmd)
+            return ""
+
+    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
+    musecraft.send_genworld("ambient", host="127.0.0.1", password="test", port=25575)
+    assert "/genworld ambient" in commands_sent
+    assert len([c for c in commands_sent if "/weather" in c]) == 0
+    assert len([c for c in commands_sent if "/time" in c]) == 0
