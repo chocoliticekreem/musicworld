@@ -3,7 +3,13 @@ try:
 except ImportError:
     MCRcon = None
 
+try:
+    import syncedlyrics
+except ImportError:
+    syncedlyrics = None
+
 import os
+import re
 import subprocess
 import time
 import urllib.parse
@@ -96,9 +102,9 @@ def fetch_lyrics(track, artist):
     Fetch lyrics via syncedlyrics (no API key needed).
     Returns list of non-empty lyric lines with timestamps stripped, or [] on failure.
     """
+    if syncedlyrics is None:
+        return []
     try:
-        import syncedlyrics
-        import re
         lrc = syncedlyrics.search(f"{track} {artist}", allow_plain_format=True)
         if not lrc:
             return []
@@ -199,10 +205,9 @@ def main():
             last_track = (track, artist)
             print(f"Now playing: {artist} — {track}")
 
-            lyrics_lines = fetch_lyrics(track, artist)
-
             # Gemini DJ intro
             if _GEMINI_DJ_AVAILABLE and CONFIG["gemini_api_key"]:
+                lyrics_lines = fetch_lyrics(track, artist)
                 intro_lines = get_dj_intro(
                     track=track,
                     artist=artist,
