@@ -504,7 +504,7 @@
     }
   </style>
 </head>
-<body>
+<body data-api-base-url="{{ api_base_url }}">
   <main class="page">
     <section class="hero">
       <div class="eyebrow">Soundscape x mc-seed-db</div>
@@ -515,7 +515,7 @@
       </p>
       <div class="hero-meta">
         <div class="hero-chip">Frontend on localhost:5000</div>
-        <div class="hero-chip">API on {{ api_base_url }}</div>
+        <div class="hero-chip" id="apiBadge">API on same deployment</div>
         <div class="hero-chip">Randomized from top matching seeds</div>
       </div>
     </section>
@@ -602,10 +602,16 @@
   </main>
 
   <script>
-    const API_BASE_URL = {{ api_base_url|tojson }};
-
+    const rawApiBaseUrl = document.body.dataset.apiBaseUrl || "";
+    const API_BASE_URL = rawApiBaseUrl.includes("{{")
+      ? ""
+      : rawApiBaseUrl.replace(/\/$/, "");
     let genres = [];
     let selectedGenreKey = null;
+
+    document.getElementById("apiBadge").textContent = API_BASE_URL
+      ? `API on ${API_BASE_URL}`
+      : "API on same deployment";
 
     function setHelperText(message) {
       document.getElementById("helperText").textContent = message;
@@ -751,8 +757,15 @@
     }
 
     function renderResult(data) {
-      const hasPromptFilters = Boolean((data.prompt?.required || []).length || (data.prompt?.excluded || []).length);
-      document.getElementById("resultGenreBadge").textContent = hasPromptFilters ? `${data.genre.label} prompt match` : `${data.genre.label} match`;
+      const hasPromptFilters = Boolean(
+        (data.prompt?.required || []).length ||
+        (data.prompt?.excluded || []).length ||
+        data.prompt?.requestedSpawnBiome
+      );
+      const promptSourceLabel = data.prompt?.source === "gemini" ? " (via Gemini)" : "";
+      document.getElementById("resultGenreBadge").textContent = hasPromptFilters
+        ? `${data.genre.label} prompt match${promptSourceLabel}`
+        : `${data.genre.label} match`;
       document.getElementById("resultGenreTitle").textContent = data.genre.label;
       document.getElementById("resultGenreDescription").textContent = data.genre.description;
       document.getElementById("seedNumber").textContent = data.seed;
@@ -777,9 +790,17 @@
       if (hasPromptFilters) {
         promptSummary.push(data.matchMode === "exact"
           ? "All parsed prompt filters matched this seed."
-          : "No exact seed matched every parsed filter, so this is the closest result in the current genre pool.");
+          : data.matchMode === "closest"
+            ? "No exact seed matched every parsed filter; this is the closest result."
+            : "Fell back to genre-only pool with prompt scoring.");
+        if (data.prompt.requestedSpawnBiome) {
+          const gotRequestedSpawn = data.spawnBiome === data.prompt.requestedSpawnBiome;
+          promptSummary.push(gotRequestedSpawn
+            ? `Spawn biome: ${data.prompt.requestedSpawnBiome} (matched).`
+            : `Requested spawn: ${data.prompt.requestedSpawnBiome}; actual: ${data.spawnBiome}.`);
+        }
         if ((data.prompt.required || []).length) {
-          promptSummary.push(`Wanted: ${data.prompt.required.join(", ")}.`);
+          promptSummary.push(`Wanted nearby: ${data.prompt.required.join(", ")}.`);
         }
         if ((data.prompt.excluded || []).length) {
           promptSummary.push(`Avoided: ${data.prompt.excluded.join(", ")}.`);
@@ -793,6 +814,9 @@
 
       if (data.prompt.overridesSelectedGenre && data.prompt.inferredGenre) {
         promptSummary.push(`Prompt genre override: ${data.prompt.inferredGenre}.`);
+      }
+      if (data.prompt.source) {
+        promptSummary.push(`Parsed by: ${data.prompt.source}.`);
       }
 
       document.getElementById("promptMode").textContent = hasPromptFilters

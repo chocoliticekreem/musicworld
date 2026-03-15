@@ -3,6 +3,12 @@ const { findGenreKeyInText } = require("./genreProfiles");
 
 const NEGATION_PATTERN = /(?:^|\b)(?:no|not|without|avoid|excluding?|skip|minus|don't want|dont want|do not want)(?:\s+\w+){0,4}\s*$/i;
 
+// Patterns that indicate the user wants to SPAWN IN a biome, not just have it nearby
+const SPAWN_PATTERNS = [
+  /(?:spawn|start|begin|land|drop|put)\s+(?:me\s+)?(?:in|at|on)\s+(?:a\s+|an\s+|the\s+)?/gi,
+  /(?:spawns?\s+(?:me\s+)?(?:in|at|on)\s+(?:a\s+|an\s+|the\s+)?)/gi
+];
+
 const STRUCTURE_DEFINITIONS = [
   {
     field: "mansionCloseBy",
@@ -109,12 +115,15 @@ function buildBiomeDefinitions() {
     return {
       field,
       label,
+      snakeName: biome,
       aliases
     };
   });
 }
 
-const FEATURE_DEFINITIONS = [...STRUCTURE_DEFINITIONS, ...buildBiomeDefinitions()].sort(
+const BIOME_DEFINITIONS = buildBiomeDefinitions();
+
+const FEATURE_DEFINITIONS = [...STRUCTURE_DEFINITIONS, ...BIOME_DEFINITIONS].sort(
   (left, right) => right.label.length - left.label.length
 );
 
@@ -143,27 +152,121 @@ function detectPreference(text, definition) {
   return lastMatch ? lastMatch.kind : null;
 }
 
+/**
+ * Detect if the text contains a "spawn in <biome>" pattern.
+ * Returns the snake_case biome name if found, null otherwise.
+ */
+function detectSpawnBiome(text) {
+  // Sort biome definitions by alias length descending so longer names match first
+  const sorted = [...BIOME_DEFINITIONS].sort(
+    (a, b) => Math.max(...b.aliases.map(x => x.length)) - Math.max(...a.aliases.map(x => x.length))
+  );
+
+  for (const pattern of SPAWN_PATTERNS) {
+    // Reset lastIndex since we reuse the regex
+    pattern.lastIndex = 0;
+    let spawnMatch;
+
+    while ((spawnMatch = pattern.exec(text)) !== null) {
+      const afterSpawn = text.slice(spawnMatch.index + spawnMatch[0].length);
+
+      for (const biome of sorted) {
+        for (const alias of biome.aliases) {
+          const biomePattern = new RegExp(`^${aliasToPattern(alias)}\\b`, "i");
+          if (biomePattern.test(afterSpawn)) {
+            return biome.snakeName;
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Detect all alias matches in the text for a given definition,
+ * returning an array of { kind, index, length } for each match.
+ */
+function findAllMatches(text, definition) {
+  const matches = [];
+
+  for (const alias of definition.aliases) {
+    const pattern = new RegExp(`\\b${aliasToPattern(alias)}\\b`, "gi");
+    let match = pattern.exec(text);
+
+    while (match) {
+      const index = match.index || 0;
+      const beforeMatch = text.slice(Math.max(0, index - 48), index).replace(/\s+/g, " ").trim();
+
+      matches.push({
+        kind: NEGATION_PATTERN.test(beforeMatch) ? "exclude" : "include",
+        index,
+        length: match[0].length
+      });
+
+      match = pattern.exec(text);
+    }
+  }
+
+  return matches;
+}
+
 function parsePromptPreferences(prompt = "") {
   const text = String(prompt || "").toLowerCase();
   const required = [];
   const excluded = [];
+  const spawnBiome = detectSpawnBiome(text);
+
+  // Track which character ranges have been claimed by a longer match
+  // to prevent "dark forest" from also matching "forest" separately.
+  // FEATURE_DEFINITIONS is already sorted longest-label-first.
+  const claimed = []; // array of { start, end }
+
+  function isOverlapping(index, length) {
+    const end = index + length;
+    return claimed.some(c => index < c.end && end > c.start);
+  }
 
   for (const definition of FEATURE_DEFINITIONS) {
-    const preference = detectPreference(text, definition);
+    const matches = findAllMatches(text, definition);
 
-    if (preference === "include") {
+    // Filter out matches that overlap with already-claimed ranges
+    const unclaimed = matches.filter(m => !isOverlapping(m.index, m.length));
+
+    if (unclaimed.length === 0) {
+      continue;
+    }
+
+    // Use the last unclaimed match to determine include/exclude (consistent with original logic)
+    const lastMatch = unclaimed[unclaimed.length - 1];
+
+    if (lastMatch.kind === "include") {
+      if (spawnBiome && definition.snakeName === spawnBiome) {
+        // Still claim the range so shorter substrings don't match
+        for (const m of unclaimed) {
+          claimed.push({ start: m.index, end: m.index + m.length });
+        }
+        continue;
+      }
       required.push(definition);
-    } else if (preference === "exclude") {
+    } else {
       excluded.push(definition);
+    }
+
+    // Claim all matched ranges
+    for (const m of unclaimed) {
+      claimed.push({ start: m.index, end: m.index + m.length });
     }
   }
 
   return {
     text: String(prompt || "").trim(),
     genreKey: findGenreKeyInText(text),
+    spawnBiome,
     required,
     excluded,
-    hasPreferences: required.length > 0 || excluded.length > 0
+    hasPreferences: required.length > 0 || excluded.length > 0 || Boolean(spawnBiome)
   };
 }
 

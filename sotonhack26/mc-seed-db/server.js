@@ -6,6 +6,7 @@ const cors = require("cors");
 const { connectDB } = require("./db");
 const { getGenreProfile, listGenres } = require("./genreProfiles");
 const { parsePromptPreferences } = require("./promptPreferences");
+const { parsePromptWithGemini } = require("./geminiPromptParser");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -15,7 +16,8 @@ app.use(express.json());
 
 let seedsCollection;
 let seedsDataset;
-let startPromise;
+let initPromise;
+let listenPromise;
 
 function humanizeBiome(value) {
   return String(value || "")
@@ -81,6 +83,11 @@ function buildSeedQuery(profile, preferences = {}) {
   const preferredFields = new Set();
 
   addProfileFields(preferredFields, profile);
+
+  // Spawn biome filter — hard constraint from prompt
+  if (preferences.spawnBiome) {
+    query.spawnBiome = preferences.spawnBiome;
+  }
 
   for (const requirement of preferences.required || []) {
     query[requirement.field] = true;
@@ -168,12 +175,12 @@ function pickSeed(candidates, profile, preferences = {}, options = {}) {
   return topPool[Math.floor(Math.random() * topPool.length)];
 }
 
-async function startServer() {
-  if (startPromise) {
-    return startPromise;
+async function initializeData() {
+  if (initPromise) {
+    return initPromise;
   }
 
-  startPromise = (async () => {
+  initPromise = (async () => {
     try {
       const db = await connectDB();
       seedsCollection = db.collection("seeds");
@@ -183,25 +190,46 @@ async function startServer() {
       console.warn("MongoDB unavailable, using local seeds.json fallback.");
       console.warn(error.message);
     }
-
-    return new Promise(resolve => {
-      app.listen(PORT, () => {
-        console.log(`API running on http://localhost:${PORT}`);
-        resolve();
-      });
-    });
   })();
 
-  return startPromise;
+  return initPromise;
 }
 
-startServer().catch(error => {
-  console.error("Failed to start mc-seed-db:", error);
-  process.exit(1);
-});
+async function startServer(options = {}) {
+  const { listen = true } = options;
+
+  await initializeData();
+
+  if (!listen) {
+    return;
+  }
+
+  if (listenPromise) {
+    return listenPromise;
+  }
+
+  listenPromise = new Promise(resolve => {
+    app.listen(PORT, () => {
+      console.log(`API running on http://localhost:${PORT}`);
+      resolve();
+    });
+  });
+
+  return listenPromise;
+}
+
+if (require.main === module) {
+  startServer().catch(error => {
+    console.error("Failed to start mc-seed-db:", error);
+    process.exit(1);
+  });
+}
 
 app.get("/api/health", (req, res) => {
-  res.json({ ok: Boolean(seedsCollection) });
+  res.json({
+    ok: Boolean(seedsCollection || seedsDataset),
+    source: seedsCollection ? "mongodb" : seedsDataset ? "local" : "starting"
+  });
 });
 
 app.get("/api/genres", (req, res) => {
@@ -215,7 +243,30 @@ app.get("/api/recommend-seed", async (req, res) => {
 
   const selectedGenre = String(req.query.genre || "").trim();
   const prompt = String(req.query.prompt || "").trim();
-  const promptPreferences = parsePromptPreferences(prompt);
+
+  // --- Parse prompt: try Gemini first, fall back to local regex parser ---
+  let promptPreferences = null;
+  let promptSource = "none";
+
+  if (prompt) {
+    try {
+      promptPreferences = await parsePromptWithGemini(prompt);
+      if (promptPreferences) {
+        promptSource = "gemini";
+        console.log("Gemini parsed prompt:", JSON.stringify(promptPreferences, null, 2));
+      }
+    } catch (err) {
+      console.warn("Gemini prompt parse failed, falling back to regex:", err.message);
+    }
+
+    if (!promptPreferences) {
+      promptPreferences = parsePromptPreferences(prompt);
+      promptSource = "regex";
+      console.log("Regex parsed prompt:", JSON.stringify(promptPreferences, null, 2));
+    }
+  } else {
+    promptPreferences = { text: "", genreKey: null, spawnBiome: null, required: [], excluded: [], hasPreferences: false };
+  }
 
   let selectedProfile = null;
   if (selectedGenre) {
@@ -237,12 +288,23 @@ app.get("/api/recommend-seed", async (req, res) => {
     let picked = pickSeed(candidates, profile, promptPreferences);
     let matchMode = "exact";
 
+    // Relaxed fallback: drop spawnBiome constraint if no exact match
+    if (!picked && promptPreferences.hasPreferences) {
+      const relaxedPreferences = { ...promptPreferences, spawnBiome: null };
+      candidates = await findSeeds(buildSeedQuery(profile, relaxedPreferences));
+      picked = pickSeed(candidates, profile, promptPreferences, {
+        relaxedPromptMatching: true
+      });
+      matchMode = "closest";
+    }
+
+    // Further fallback: drop all prompt constraints
     if (!picked && promptPreferences.hasPreferences) {
       candidates = await findSeeds(buildSeedQuery(profile));
       picked = pickSeed(candidates, profile, promptPreferences, {
         relaxedPromptMatching: true
       });
-      matchMode = "closest";
+      matchMode = "genre-only";
     }
 
     if (!picked) {
@@ -284,8 +346,10 @@ app.get("/api/recommend-seed", async (req, res) => {
       exactPromptMatchCount: exactCandidates.length,
       prompt: {
         text: promptPreferences.text || null,
+        source: promptSource,
         inferredGenre: promptProfile ? promptProfile.label : null,
         overridesSelectedGenre: Boolean(promptProfile && selectedProfile && promptProfile.key !== selectedProfile.key),
+        requestedSpawnBiome: promptPreferences.spawnBiome ? humanizeBiome(promptPreferences.spawnBiome) : null,
         required: promptPreferences.required.map(({ label }) => label),
         excluded: promptPreferences.excluded.map(({ label }) => label)
       },
