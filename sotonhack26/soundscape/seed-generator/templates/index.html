@@ -254,6 +254,55 @@
       font-weight: 600;
     }
 
+    .prompt-shell {
+      margin-top: 20px;
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid var(--border);
+      background: rgba(255, 250, 240, 0.82);
+    }
+
+    .prompt-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .prompt-label {
+      font-size: 0.94rem;
+      font-weight: 700;
+    }
+
+    .prompt-meta,
+    .prompt-note {
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+
+    .prompt-input {
+      width: 100%;
+      min-height: 104px;
+      resize: vertical;
+      padding: 14px 15px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.66);
+      color: var(--text);
+      font: inherit;
+      line-height: 1.6;
+      outline: none;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+      margin-bottom: 10px;
+    }
+
+    .prompt-input:focus {
+      border-color: rgba(184, 106, 45, 0.45);
+      box-shadow: 0 0 0 4px rgba(184, 106, 45, 0.08);
+    }
+
     .actions {
       margin-top: 22px;
       display: flex;
@@ -482,6 +531,15 @@
 
       <div class="genre-grid" id="genreGrid"></div>
 
+      <div class="prompt-shell">
+        <div class="prompt-head">
+          <label class="prompt-label" for="seedPrompt">Optional prompt</label>
+          <div class="prompt-meta">Use plain English</div>
+        </div>
+        <textarea id="seedPrompt" class="prompt-input" placeholder="Try: ambient with a ruined portal nearby, or metal with a mansion but no ocean"></textarea>
+        <p class="prompt-note">Add nearby structures or biomes here. If you name a genre in the prompt, it overrides the selected card.</p>
+      </div>
+
       <div class="actions">
         <button class="primary-btn" id="generateBtn" disabled onclick="generateSeed()">Find me a seed</button>
         <div class="helper" id="helperText">Loading genres from the local backend...</div>
@@ -523,6 +581,12 @@
           <div class="detail-card">
             <h4>Nearby Structures</h4>
             <div class="tag-row" id="matchedStructures"></div>
+          </div>
+
+          <div class="detail-card">
+            <h4>Prompt Match</h4>
+            <strong id="promptMode">Genre-only search</strong>
+            <p id="promptSummary">Add a prompt to require nearby structures or biomes.</p>
           </div>
 
           <div class="detail-card">
@@ -588,6 +652,10 @@
       });
     }
 
+    function getPromptValue() {
+      return document.getElementById("seedPrompt").value.trim();
+    }
+
     function renderGenres() {
       const grid = document.getElementById("genreGrid");
       grid.innerHTML = "";
@@ -621,7 +689,7 @@
 
       const selected = genres.find(genre => genre.key === key);
       if (selected) {
-        setHelperText(`Selected ${selected.label}. Ask mc-seed-db for a fresh match whenever you're ready.`);
+        setHelperText(`Selected ${selected.label}. Add an optional prompt like "with a ruined portal nearby" to narrow the seed.`);
         setNote(selected.note || "");
       }
     }
@@ -661,7 +729,13 @@
       document.getElementById("result").style.display = "none";
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/recommend-seed?genre=${encodeURIComponent(selectedGenreKey)}`);
+        const params = new URLSearchParams({ genre: selectedGenreKey });
+        const prompt = getPromptValue();
+        if (prompt) {
+          params.set("prompt", prompt);
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/recommend-seed?${params.toString()}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -677,21 +751,62 @@
     }
 
     function renderResult(data) {
-      document.getElementById("resultGenreBadge").textContent = `${data.genre.label} match`;
+      const hasPromptFilters = Boolean((data.prompt?.required || []).length || (data.prompt?.excluded || []).length);
+      document.getElementById("resultGenreBadge").textContent = hasPromptFilters ? `${data.genre.label} prompt match` : `${data.genre.label} match`;
       document.getElementById("resultGenreTitle").textContent = data.genre.label;
       document.getElementById("resultGenreDescription").textContent = data.genre.description;
       document.getElementById("seedNumber").textContent = data.seed;
       document.getElementById("spawnBiome").textContent = data.spawnBiome || "Unknown";
-      document.getElementById("matchPool").textContent = `${data.totalMatchingSeeds} candidate seeds`;
-      document.getElementById("matchScore").textContent = `Picked from the strongest matches in the current pool. Score: ${data.matchScore}.`;
+
+      if (hasPromptFilters) {
+        document.getElementById("matchPool").textContent = data.matchMode === "exact"
+          ? `${data.exactPromptMatchCount} exact prompt matches`
+          : `${data.exactPromptMatchCount} exact matches, ${data.totalMatchingSeeds} close candidates`;
+        document.getElementById("matchScore").textContent = data.matchMode === "exact"
+          ? `Picked from the strongest exact matches. Score: ${data.matchScore}.`
+          : `No exact seed hit every prompt filter, so this came from the closest matching pool. Score: ${data.matchScore}.`;
+      } else {
+        document.getElementById("matchPool").textContent = `${data.totalMatchingSeeds} candidate seeds`;
+        document.getElementById("matchScore").textContent = `Picked from the strongest matches in the current pool. Score: ${data.matchScore}.`;
+      }
 
       renderTags("matchedBiomes", data.matchedBiomes, "No matched biomes recorded");
       renderTags("matchedStructures", data.matchedStructures, "No featured structures on this pick");
+
+      const promptSummary = [];
+      if (hasPromptFilters) {
+        promptSummary.push(data.matchMode === "exact"
+          ? "All parsed prompt filters matched this seed."
+          : "No exact seed matched every parsed filter, so this is the closest result in the current genre pool.");
+        if ((data.prompt.required || []).length) {
+          promptSummary.push(`Wanted: ${data.prompt.required.join(", ")}.`);
+        }
+        if ((data.prompt.excluded || []).length) {
+          promptSummary.push(`Avoided: ${data.prompt.excluded.join(", ")}.`);
+        }
+        if ((data.missingPromptFeatures || []).length) {
+          promptSummary.push(`Missing: ${data.missingPromptFeatures.join(", ")}.`);
+        }
+      } else {
+        promptSummary.push("Genre-only search. Add a prompt to require nearby structures or biomes.");
+      }
+
+      if (data.prompt.overridesSelectedGenre && data.prompt.inferredGenre) {
+        promptSummary.push(`Prompt genre override: ${data.prompt.inferredGenre}.`);
+      }
+
+      document.getElementById("promptMode").textContent = hasPromptFilters
+        ? (data.matchMode === "exact" ? "Exact prompt match" : "Closest prompt match")
+        : "Genre-only search";
+      document.getElementById("promptSummary").textContent = promptSummary.join(" ");
 
       const footnote = [];
       footnote.push(`Served by ${data.source}.`);
       if (data.genre.note) {
         footnote.push(data.genre.note);
+      }
+      if (data.prompt.text) {
+        footnote.push(`Prompt: "${data.prompt.text}".`);
       }
       footnote.push("Run the button again to get another high-match seed for the same genre.");
       document.getElementById("resultFootnote").textContent = footnote.join(" ");

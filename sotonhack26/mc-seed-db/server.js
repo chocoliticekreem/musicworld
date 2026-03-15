@@ -5,6 +5,7 @@ const express = require("express");
 const cors = require("cors");
 const { connectDB } = require("./db");
 const { getGenreProfile, listGenres } = require("./genreProfiles");
+const { parsePromptPreferences } = require("./promptPreferences");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -61,18 +62,52 @@ async function findSeeds(query = {}, limit = 0) {
   return limit > 0 ? matches.slice(0, limit) : matches;
 }
 
-function buildGenreQuery(profile) {
-  return {
-    $or: profile.biomes.map(({ field }) => ({ [field]: true }))
-  };
+function addProfileFields(fields, profile) {
+  if (!profile) {
+    return;
+  }
+
+  for (const biome of profile.biomes || []) {
+    fields.add(biome.field);
+  }
+
+  for (const structure of profile.structures || []) {
+    fields.add(structure.field);
+  }
 }
 
-function scoreSeed(doc, profile) {
+function buildSeedQuery(profile, preferences = {}) {
+  const query = {};
+  const preferredFields = new Set();
+
+  addProfileFields(preferredFields, profile);
+
+  for (const requirement of preferences.required || []) {
+    query[requirement.field] = true;
+    preferredFields.add(requirement.field);
+  }
+
+  for (const exclusion of preferences.excluded || []) {
+    query[exclusion.field] = false;
+  }
+
+  if (preferredFields.size) {
+    query.$or = [...preferredFields].map(field => ({ [field]: true }));
+  }
+
+  return query;
+}
+
+function scoreSeed(doc, profile, preferences = {}, options = {}) {
+  const relaxedPromptMatching = Boolean(options.relaxedPromptMatching);
   let score = 0;
   const matchedBiomes = [];
   const matchedStructures = [];
+  const matchedPromptFeatures = [];
+  const avoidedPromptFeatures = [];
+  const missingPromptFeatures = [];
 
-  for (const biome of profile.biomes) {
+  for (const biome of profile.biomes || []) {
     if (doc[biome.field]) {
       score += biome.weight;
       matchedBiomes.push(biome.label);
@@ -86,18 +121,41 @@ function scoreSeed(doc, profile) {
     }
   }
 
+  for (const requirement of preferences.required || []) {
+    if (doc[requirement.field]) {
+      score += 3.2;
+      matchedPromptFeatures.push(requirement.label);
+    } else if (relaxedPromptMatching) {
+      score -= 4;
+      missingPromptFeatures.push(requirement.label);
+    }
+  }
+
+  for (const exclusion of preferences.excluded || []) {
+    if (!doc[exclusion.field]) {
+      score += 0.8;
+      avoidedPromptFeatures.push(exclusion.label);
+    } else if (relaxedPromptMatching) {
+      score -= 2.4;
+      missingPromptFeatures.push(`No ${exclusion.label}`);
+    }
+  }
+
   return {
     score,
     matchedBiomes,
-    matchedStructures
+    matchedStructures,
+    matchedPromptFeatures,
+    avoidedPromptFeatures,
+    missingPromptFeatures
   };
 }
 
-function pickSeed(candidates, profile) {
+function pickSeed(candidates, profile, preferences = {}, options = {}) {
   const scored = candidates
     .map(doc => ({
       doc,
-      ...scoreSeed(doc, profile)
+      ...scoreSeed(doc, profile, preferences, options)
     }))
     .filter(candidate => candidate.score > 0)
     .sort((left, right) => right.score - left.score);
@@ -155,24 +213,55 @@ app.get("/api/recommend-seed", async (req, res) => {
     return;
   }
 
-  const profile = getGenreProfile(req.query.genre);
-  if (!profile) {
+  const selectedGenre = String(req.query.genre || "").trim();
+  const prompt = String(req.query.prompt || "").trim();
+  const promptPreferences = parsePromptPreferences(prompt);
+
+  let selectedProfile = null;
+  if (selectedGenre) {
+    selectedProfile = getGenreProfile(selectedGenre);
+  }
+
+  if (selectedGenre && !selectedProfile) {
     return res.status(400).json({
       error: "Unknown genre. Try ambient, country, electronic, indie pop, jazz, metal, or classic Minecraft."
     });
   }
 
+  const promptProfile = promptPreferences.genreKey ? getGenreProfile(promptPreferences.genreKey) : null;
+  const profile = promptProfile || selectedProfile || getGenreProfile("default");
+
   try {
-    const candidates = await findSeeds(buildGenreQuery(profile));
-    const picked = pickSeed(candidates, profile);
+    const exactCandidates = await findSeeds(buildSeedQuery(profile, promptPreferences));
+    let candidates = exactCandidates;
+    let picked = pickSeed(candidates, profile, promptPreferences);
+    let matchMode = "exact";
+
+    if (!picked && promptPreferences.hasPreferences) {
+      candidates = await findSeeds(buildSeedQuery(profile));
+      picked = pickSeed(candidates, profile, promptPreferences, {
+        relaxedPromptMatching: true
+      });
+      matchMode = "closest";
+    }
 
     if (!picked) {
       return res.status(404).json({
-        error: `No indexed seeds matched ${profile.label.toLowerCase()} yet.`
+        error: promptPreferences.hasPreferences
+          ? `No indexed seeds matched ${profile.label.toLowerCase()} with those nearby requirements yet.`
+          : `No indexed seeds matched ${profile.label.toLowerCase()} yet.`
       });
     }
 
-    const { doc, matchedBiomes, matchedStructures, score } = picked;
+    const {
+      doc,
+      matchedBiomes,
+      matchedStructures,
+      matchedPromptFeatures,
+      avoidedPromptFeatures,
+      missingPromptFeatures,
+      score
+    } = picked;
 
     res.json({
       genre: {
@@ -186,8 +275,20 @@ app.get("/api/recommend-seed", async (req, res) => {
       spawnBiome: humanizeBiome(doc.spawnBiome),
       matchedBiomes,
       matchedStructures,
+      matchedPromptFeatures,
+      avoidedPromptFeatures,
+      missingPromptFeatures,
       matchScore: Number(score.toFixed(2)),
+      matchMode,
       totalMatchingSeeds: candidates.length,
+      exactPromptMatchCount: exactCandidates.length,
+      prompt: {
+        text: promptPreferences.text || null,
+        inferredGenre: promptProfile ? promptProfile.label : null,
+        overridesSelectedGenre: Boolean(promptProfile && selectedProfile && promptProfile.key !== selectedProfile.key),
+        required: promptPreferences.required.map(({ label }) => label),
+        excluded: promptPreferences.excluded.map(({ label }) => label)
+      },
       source: seedsCollection ? "mc-seed-db (mongodb)" : "mc-seed-db (local seeds.json fallback)"
     });
   } catch (error) {

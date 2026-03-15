@@ -131,6 +131,19 @@ function resolveGenreKey(value) {
   return GENRE_ALIASES[normalizeGenreKey(value)] || null;
 }
 
+function findGenreKeyInText(value = "") {
+  const normalized = normalizeGenreKey(value);
+  const aliases = Object.keys(GENRE_ALIASES).sort((left, right) => right.length - left.length);
+
+  for (const alias of aliases) {
+    if (normalized.includes(alias)) {
+      return GENRE_ALIASES[alias];
+    }
+  }
+
+  return null;
+}
+
 function serializeProfile(key, profile) {
   return {
     key,
@@ -159,6 +172,7 @@ function getGenreProfile(value) {
 
 module.exports = {
   GENRE_PROFILES,
+  findGenreKeyInText,
   getGenreProfile,
   listGenres,
   resolveGenreKey
