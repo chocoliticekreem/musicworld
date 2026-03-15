@@ -40,6 +40,7 @@ You can use a `.env` file at the repo root or export directly:
 ```bash
 export LASTFM_API_KEY=your_lastfm_key
 export RCON_PASSWORD=yourpassword
+export GENIUS_API_KEY=your_genius_key   # optional — lyrics scroll in chat
 ```
 
 Optional env vars (defaults shown):
@@ -57,3 +58,5 @@ python3 scripts/musecraft.py
 - Works for popular artists. Obscure tracks may not have Last.fm tags — genre stays unchanged.
 - Spotify desktop app must be running and playing.
 - Polls every 20 seconds. Genre command only fires when genre changes.
+- Set ENABLE_LYRICS = False in the script to disable lyrics entirely.
+- Get a free Genius API key at genius.com/api-clients.

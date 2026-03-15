@@ -84,6 +84,7 @@ Automatically runs `/genworld <genre>` when the genre of your current Spotify tr
    ```
    LASTFM_API_KEY=your_lastfm_key
    RCON_PASSWORD=yourpassword
+   GENIUS_API_KEY=your_genius_key   # optional — lyrics scroll in Minecraft chat
    ```
 4. Start the script:
    ```bash
@@ -91,6 +92,9 @@ Automatically runs `/genworld <genre>` when the genre of your current Spotify tr
    ```
 
 The script polls every 20 seconds. When it detects a genre change it fires `/genworld <genre>` automatically. Works best with popular artists — obscure tracks with no Last.fm tags will keep the current genre.
+
+- Set `ENABLE_LYRICS = False` in `scripts/musecraft.py` to disable lyrics entirely.
+- Get a free Genius API key at genius.com/api-clients (takes 2 minutes).
 
 ---
 
