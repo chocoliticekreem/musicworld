@@ -19,11 +19,24 @@ import tempfile
 import unicodedata
 from difflib import SequenceMatcher
 from flask import Flask, render_template, request, jsonify
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
 from dotenv import load_dotenv
-import requests as http_requests
-import numpy as np
+
+try:
+    import spotipy
+    from spotipy.oauth2 import SpotifyClientCredentials
+except ImportError:
+    spotipy = None
+    SpotifyClientCredentials = None
+
+try:
+    import requests as http_requests
+except ImportError:
+    http_requests = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -42,15 +55,12 @@ SPOTIFY_AUDIO_FEATURES_MODE = os.getenv("SPOTIFY_AUDIO_FEATURES_MODE", "off").st
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", "").strip()
 LASTFM_BASE    = "https://ws.audioscrobbler.com/2.0/"
 
-if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise RuntimeError(
-        "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET in environment or soundscape/seed-generator/.env"
-    )
-
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET
-))
+sp = None
+if spotipy and SpotifyClientCredentials and SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
+    sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET
+    ))
 
 if SPOTIFY_AUDIO_FEATURES_MODE not in {"off", "auto", "force"}:
     SPOTIFY_AUDIO_FEATURES_MODE = "off"
@@ -174,10 +184,14 @@ def score_deezer_result(result: dict, track: dict) -> float:
 
 # Krumhansl-Kessler key profiles for major and minor keys.
 # Used to correlate chroma vectors against known tonal profiles.
-_MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09,
-                           2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
-_MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
-                           2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+if np is not None:
+    _MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09,
+                               2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+    _MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
+                               2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+else:
+    _MAJOR_PROFILE = None
+    _MINOR_PROFILE = None
 
 
 def analyze_audio_preview(preview_url: str) -> dict | None:
@@ -189,6 +203,9 @@ def analyze_audio_preview(preview_url: str) -> dict | None:
 
     Returns a dict matching Spotify's audio_features schema or None on failure.
     """
+    if np is None or http_requests is None:
+        return None
+
     try:
         import librosa
     except ImportError:
@@ -437,6 +454,9 @@ def fetch_deezer_preview(track: dict) -> str | None:
     if not track_name or not artist_name:
         return None
 
+    if http_requests is None:
+        return None
+
     try:
         search_queries = [
             {"q": f'track:"{track_name}" artist:"{artist_name}"', "limit": 10},
@@ -597,6 +617,11 @@ def fetch_lastfm_tags(track: dict) -> list[dict] | None:
     if not LASTFM_API_KEY:
         return None
 
+    if http_requests is None:
+        return None
+
+    requests_client = http_requests
+
     track_name  = track.get("name", "")
     artists     = track.get("artists") or []
     artist_name = artists[0].get("name", "") if artists else ""
@@ -612,7 +637,7 @@ def fetch_lastfm_tags(track: dict) -> list[dict] | None:
             **extra_params,
         }
         try:
-            resp = http_requests.get(LASTFM_BASE, params=params, timeout=8)
+            resp = requests_client.get(LASTFM_BASE, params=params, timeout=8)
             if resp.status_code != 200:
                 return None
             data = resp.json()
@@ -787,9 +812,10 @@ def fetch_track_features(track_id: str, track: dict) -> tuple[dict, str | None]:
     global spotify_audio_features_blocked
 
     # --- Try Spotify Audio Features first when this app is allowed to use them ---
-    if should_try_spotify_audio_features():
+    spotify_client = sp
+    if spotify_client is not None and should_try_spotify_audio_features():
         try:
-            features_list = sp.audio_features([track_id]) or []
+            features_list = spotify_client.audio_features([track_id]) or []
             features = features_list[0] if features_list else None
             if features:
                 return features, None
@@ -1095,7 +1121,8 @@ def build_world_profile(features: dict,
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    api_base_url = os.getenv("MC_SEED_DB_API_URL", "http://localhost:3000").rstrip("/")
+    return render_template("index.html", api_base_url=api_base_url)
 
 
 @app.route("/generate", methods=["POST"])
@@ -1117,10 +1144,14 @@ def generate():
         }), 500
 
     try:
+        spotify_client = sp
+        if spotify_client is None:
+            return jsonify({"error": "Spotify is not configured for this Soundscape instance."}), 500
+
         track_id = extract_track_id(url)
 
         # Fetch track metadata first, then attempt audio features.
-        track = sp.track(track_id)
+        track = spotify_client.track(track_id)
         if not track:
             return jsonify({"error": "Track not found. Check the URL and try again."}), 404
 

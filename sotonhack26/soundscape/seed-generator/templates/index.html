@@ -2,582 +2,719 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Soundscape — Music to Minecraft</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Soundscape - Genre to Minecraft Seed</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
     :root {
-      --bg:       #0a0a0f;
-      --surface:  #12121a;
-      --border:   #1e1e2e;
-      --accent:   #7c6aff;
-      --accent2:  #ff6a9b;
-      --text:     #e8e8f0;
-      --muted:    #6b6b80;
-      --success:  #6affb4;
+      --bg: #f4efe3;
+      --bg-accent: #e4d7bb;
+      --surface: rgba(255, 251, 242, 0.86);
+      --surface-strong: #fffaf0;
+      --border: rgba(88, 70, 44, 0.14);
+      --text: #2f2417;
+      --muted: #6e5f4b;
+      --accent: #b86a2d;
+      --accent-dark: #86491c;
+      --accent-soft: rgba(184, 106, 45, 0.14);
+      --success: #2f7c57;
+      --error: #b24438;
+      --shadow: 0 24px 80px rgba(111, 87, 52, 0.14);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Space Grotesk', sans-serif;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 48px 24px;
+      padding: 32px 18px 60px;
+      font-family: 'Outfit', sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(90, 143, 103, 0.22), transparent 30%),
+        radial-gradient(circle at top right, rgba(184, 106, 45, 0.22), transparent 28%),
+        linear-gradient(180deg, var(--bg) 0%, #efe5d0 100%);
     }
 
-    /* Ambient glow background */
-    body::before {
-      content: '';
+    body::before,
+    body::after {
+      content: "";
       position: fixed;
-      top: -200px; left: 50%;
-      transform: translateX(-50%);
-      width: 800px; height: 500px;
-      background: radial-gradient(ellipse, rgba(124,106,255,0.12) 0%, transparent 70%);
+      inset: auto;
       pointer-events: none;
       z-index: 0;
+      opacity: 0.45;
     }
 
-    header {
-      text-align: center;
-      margin-bottom: 48px;
+    body::before {
+      width: 320px;
+      height: 320px;
+      bottom: -90px;
+      left: -70px;
+      border-radius: 42% 58% 68% 32% / 36% 42% 58% 64%;
+      background: rgba(90, 143, 103, 0.16);
+    }
+
+    body::after {
+      width: 260px;
+      height: 260px;
+      top: 80px;
+      right: -60px;
+      border-radius: 54% 46% 34% 66% / 44% 38% 62% 56%;
+      background: rgba(184, 106, 45, 0.12);
+    }
+
+    .page {
       position: relative;
       z-index: 1;
+      width: 100%;
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 24px;
     }
 
-    .logo {
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.3em;
+    .hero,
+    .panel {
+      backdrop-filter: blur(14px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 34px 28px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -60px -60px auto;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(184, 106, 45, 0.18), transparent 68%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(47, 124, 87, 0.1);
+      color: var(--success);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
 
     h1 {
-      font-size: clamp(2rem, 5vw, 3.5rem);
-      font-weight: 700;
-      background: linear-gradient(135deg, #fff 0%, var(--accent) 50%, var(--accent2) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      line-height: 1.1;
+      font-size: clamp(2.3rem, 5vw, 4.3rem);
+      line-height: 0.96;
+      max-width: 640px;
       margin-bottom: 16px;
     }
 
-    .subtitle {
+    .hero p {
+      max-width: 620px;
       color: var(--muted);
-      font-size: 1rem;
-      font-weight: 400;
-      max-width: 480px;
-      line-height: 1.6;
+      font-size: 1.04rem;
+      line-height: 1.7;
     }
 
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 32px;
-      width: 100%;
-      max-width: 600px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .input-group {
+    .hero-meta {
+      margin-top: 22px;
       display: flex;
+      flex-wrap: wrap;
       gap: 12px;
-      margin-bottom: 12px;
     }
 
-    input[type="text"] {
-      flex: 1;
-      background: var(--bg);
+    .hero-chip {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 250, 240, 0.85);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px 18px;
-      color: var(--text);
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 0.95rem;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    input[type="text"]:focus {
-      border-color: var(--accent);
-    }
-
-    input[type="text"]::placeholder { color: var(--muted); }
-
-    button {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 14px 24px;
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s, transform 0.1s;
-      white-space: nowrap;
-    }
-
-    button:hover  { opacity: 0.9; }
-    button:active { transform: scale(0.97); }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    .hint {
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    .hint a { color: var(--accent); text-decoration: none; }
-
-    /* Loading */
-    .loading {
-      display: none;
-      text-align: center;
-      padding: 40px 0;
-      color: var(--muted);
-    }
-
-    .spinner {
-      width: 36px; height: 36px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 16px;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Results */
-    #result { display: none; margin-top: 28px; }
-
-    .track-header {
-      display: flex;
-      gap: 16px;
-      align-items: center;
-      margin-bottom: 24px;
-      padding-bottom: 24px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .album-art {
-      width: 64px; height: 64px;
-      border-radius: 10px;
-      object-fit: cover;
-      flex-shrink: 0;
-    }
-
-    .track-info .track-name {
-      font-weight: 600;
-      font-size: 1.05rem;
-    }
-
-    .track-info .artist {
       color: var(--muted);
       font-size: 0.9rem;
-      margin-top: 2px;
     }
 
-    .seed-block {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px 24px;
-      margin-bottom: 20px;
+    .panel {
+      padding: 28px;
+    }
+
+    .panel-head {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      gap: 16px;
+      gap: 18px;
+      align-items: flex-end;
+      margin-bottom: 20px;
     }
 
-    .seed-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--accent);
+    .panel-head h2 {
+      font-size: 1.55rem;
       margin-bottom: 6px;
     }
 
-    .seed-number {
-      font-family: 'Space Mono', monospace;
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: var(--success);
-      word-break: break-all;
+    .panel-head p {
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: 560px;
     }
 
-    .copy-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-size: 0.85rem;
-      color: var(--text);
+    .api-badge {
       flex-shrink: 0;
+      padding: 10px 14px;
+      border-radius: 16px;
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      font-size: 0.86rem;
+      color: var(--muted);
     }
 
-    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-    /* Stats bar */
-    .stats-grid {
+    .genre-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
     }
 
-    @media (max-width: 520px) {
-      .stats-grid {
-        grid-template-columns: repeat(3, 1fr);
-      }
-    }
-
-    .stat {
-      background: var(--bg);
+    .genre-card {
+      width: 100%;
+      text-align: left;
+      padding: 18px;
+      border-radius: 22px;
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px 10px;
-      text-align: center;
+      background: rgba(255, 250, 240, 0.9);
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+      cursor: pointer;
+    }
+
+    .genre-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(184, 106, 45, 0.34);
+      box-shadow: 0 16px 34px rgba(111, 87, 52, 0.1);
+    }
+
+    .genre-card.active {
+      border-color: rgba(184, 106, 45, 0.55);
+      background: linear-gradient(180deg, #fff8ee 0%, #f9efe2 100%);
+      box-shadow: 0 18px 38px rgba(184, 106, 45, 0.16);
+    }
+
+    .genre-title {
       display: flex;
-      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
       align-items: center;
-      justify-content: center;
-      min-height: 80px;
-    }
-
-    .stat-val {
-      font-family: 'Space Mono', monospace;
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: var(--accent2);
-      line-height: 1.2;
-    }
-
-    .stat-unit {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.7rem;
-      font-weight: 400;
-      color: var(--accent2);
-      opacity: 0.7;
-      margin-top: 1px;
-    }
-
-    .stat-label {
-      font-size: 0.65rem;
-      color: var(--muted);
-      margin-top: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      font-weight: 500;
-    }
-
-    /* World profile */
-    .profile-section {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px 24px;
-      margin-bottom: 16px;
-    }
-
-    .profile-title {
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 14px;
-    }
-
-    .profile-row {
-      display: flex;
-      gap: 12px;
       margin-bottom: 10px;
-      font-size: 0.9rem;
-      line-height: 1.5;
     }
 
-    .profile-row:last-child { margin-bottom: 0; }
-
-    .profile-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
-
-    .genre-badge {
-      display: inline-block;
-      background: rgba(124,106,255,0.15);
-      border: 1px solid rgba(124,106,255,0.3);
-      border-radius: 8px;
-      padding: 4px 12px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-top: 12px;
+    .genre-title strong {
+      font-size: 1.02rem;
     }
 
-    .genre-source {
-      font-size: 0.65rem;
+    .genre-pulse {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(47, 124, 87, 0.35);
+    }
+
+    .genre-card.active .genre-pulse {
+      background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(184, 106, 45, 0.12);
+    }
+
+    .genre-description {
       color: var(--muted);
-      margin-top: 4px;
-      font-style: italic;
-      letter-spacing: 0.02em;
+      line-height: 1.55;
+      margin-bottom: 14px;
+      min-height: 50px;
     }
 
-    .mod-note {
-      background: rgba(106,255,180,0.07);
-      border: 1px solid rgba(106,255,180,0.2);
-      border-radius: 12px;
-      padding: 14px 18px;
-      font-size: 0.85rem;
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(184, 106, 45, 0.09);
+      color: var(--accent-dark);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .actions {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .primary-btn,
+    .copy-btn {
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.14s ease, opacity 0.14s ease, box-shadow 0.14s ease;
+    }
+
+    .primary-btn {
+      padding: 14px 20px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--accent) 0%, #cf8b45 100%);
+      color: #fffdf8;
+      font-size: 0.98rem;
+      font-weight: 700;
+      box-shadow: 0 14px 28px rgba(184, 106, 45, 0.2);
+    }
+
+    .primary-btn:hover,
+    .copy-btn:hover {
+      transform: translateY(-1px);
+      opacity: 0.96;
+    }
+
+    .primary-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .helper {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .loading,
+    .error-box,
+    .note-box,
+    #result {
+      display: none;
+    }
+
+    .loading,
+    .error-box,
+    .note-box {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      line-height: 1.55;
+    }
+
+    .loading {
+      background: rgba(47, 124, 87, 0.08);
       color: var(--success);
-      line-height: 1.5;
     }
 
     .error-box {
-      background: rgba(255,80,80,0.08);
-      border: 1px solid rgba(255,80,80,0.25);
-      border-radius: 12px;
-      padding: 16px 20px;
-      color: #ff8080;
-      font-size: 0.9rem;
-      margin-top: 20px;
-      display: none;
+      background: rgba(178, 68, 56, 0.08);
+      color: var(--error);
+      border-color: rgba(178, 68, 56, 0.18);
     }
 
-    .analysis-box {
-      background: rgba(255, 214, 102, 0.08);
-      border: 1px solid rgba(255, 214, 102, 0.25);
-      border-radius: 12px;
-      padding: 14px 18px;
-      color: #ffd666;
+    .note-box {
+      background: rgba(184, 106, 45, 0.08);
+      color: var(--accent-dark);
+      border-color: rgba(184, 106, 45, 0.18);
+    }
+
+    #result {
+      margin-top: 24px;
+    }
+
+    .result-shell {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+    }
+
+    .result-card,
+    .seed-card {
+      background: rgba(255, 250, 240, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 22px;
+    }
+
+    .result-card h3 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+
+    .result-card p {
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .seed-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+      background: linear-gradient(180deg, #fff6e8 0%, #fffaf1 100%);
+    }
+
+    .seed-label {
+      color: var(--accent-dark);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .seed-number {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: clamp(1.32rem, 2vw, 1.72rem);
+      line-height: 1.3;
+      word-break: break-word;
+      color: var(--success);
+    }
+
+    .copy-btn {
+      align-self: flex-start;
+      padding: 11px 14px;
+      border-radius: 14px;
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-weight: 600;
+    }
+
+    .detail-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .detail-card {
+      background: rgba(255, 250, 240, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 18px;
+    }
+
+    .detail-card h4 {
+      font-size: 0.78rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .detail-card strong {
+      display: block;
+      font-size: 1.05rem;
+      margin-bottom: 6px;
+    }
+
+    .detail-card p {
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 0.95rem;
+    }
+
+    .footnote {
+      margin-top: 18px;
+      color: var(--muted);
       font-size: 0.9rem;
-      line-height: 1.5;
-      margin-top: 20px;
-      display: none;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 760px) {
+      .genre-grid,
+      .result-shell,
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .panel-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .panel,
+      .hero {
+        padding: 22px;
+      }
     }
   </style>
 </head>
 <body>
-
-  <header>
-    <div class="logo">🎵 Soundscape</div>
-    <h1>Music becomes<br>a Minecraft world.</h1>
-    <p class="subtitle">
-      Paste any Spotify track link. We'll analyse its DNA —
-      tempo, mood, energy — and forge a unique world seed just for that song.
-    </p>
-  </header>
-
-  <div class="card">
-    <div class="input-group">
-      <input type="text" id="spotifyUrl"
-        placeholder="https://open.spotify.com/track/..." />
-      <button id="generateBtn" onclick="generate()">Generate</button>
-    </div>
-    <p class="hint">
-      Right-click any song in Spotify → Share →
-      <a href="#" onclick="return false;">Copy Song Link</a>
-    </p>
-
-    <div class="loading" id="loading">
-      <div class="spinner"></div>
-      <p>Analysing your song...</p>
-    </div>
-
-    <div class="error-box" id="errorBox"></div>
-    <div class="analysis-box" id="analysisBox"></div>
-
-    <div id="result">
-      <div class="track-header">
-        <img class="album-art" id="albumArt" src="" alt="" />
-        <div class="track-info">
-          <div class="track-name" id="trackName"></div>
-          <div class="artist" id="artistName"></div>
-        </div>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">Soundscape x mc-seed-db</div>
+      <h1>Pick a genre.<br />Get a world.</h1>
+      <p>
+        Choose the kind of music you want to live inside. Soundscape handles the frontend,
+        and <code>mc-seed-db</code> returns a Minecraft seed whose nearby biomes fit that vibe.
+      </p>
+      <div class="hero-meta">
+        <div class="hero-chip">Frontend on localhost:5000</div>
+        <div class="hero-chip">API on {{ api_base_url }}</div>
+        <div class="hero-chip">Randomized from top matching seeds</div>
       </div>
+    </section>
 
-      <div class="seed-block">
+    <section class="panel">
+      <div class="panel-head">
         <div>
-          <div class="seed-label">Your Minecraft Seed</div>
-          <div class="seed-number" id="seedNum"></div>
+          <h2>Choose your listening lane</h2>
+          <p>Each option maps to a biome profile already indexed in the seed database.</p>
         </div>
-        <button class="copy-btn" onclick="copySeed()">Copy</button>
+        <div class="api-badge">Live data from <code>mc-seed-db</code></div>
       </div>
 
-      <div class="stats-grid" id="statsGrid"></div>
+      <div class="genre-grid" id="genreGrid"></div>
 
-      <div class="profile-section">
-        <div class="profile-title">World Profile</div>
-        <div class="profile-row">
-          <span class="profile-icon">⛰️</span>
-          <span id="terrain"></span>
-        </div>
-        <div class="profile-row">
-          <span class="profile-icon">🌿</span>
-          <span id="biome"></span>
-        </div>
-        <div class="profile-row">
-          <span class="profile-icon">🌫️</span>
-          <span id="atmosphere"></span>
-        </div>
-        <div class="profile-row">
-          <span class="profile-icon">⚔️</span>
-          <span id="hostility"></span>
-        </div>
-        <div>
-          <div class="genre-badge" id="genreBadge"></div>
-          <div class="genre-source" id="genreSource"></div>
-        </div>
+      <div class="actions">
+        <button class="primary-btn" id="generateBtn" disabled onclick="generateSeed()">Find me a seed</button>
+        <div class="helper" id="helperText">Loading genres from the local backend...</div>
       </div>
 
-      <div class="mod-note">
-        🎮 <strong>Using the Biome Music Mod?</strong>
-        Once you're in this world, the mod will play
-        <strong id="genreNote"></strong> based on your current biome —
-        completing the full Soundscape experience.
+      <div class="loading" id="loading">Finding a high-match seed from mc-seed-db...</div>
+      <div class="error-box" id="errorBox"></div>
+      <div class="note-box" id="noteBox"></div>
+
+      <div id="result">
+        <div class="result-shell">
+          <div class="result-card">
+            <div class="eyebrow" id="resultGenreBadge">Genre match</div>
+            <h3 id="resultGenreTitle"></h3>
+            <p id="resultGenreDescription"></p>
+          </div>
+
+          <div class="seed-card">
+            <div>
+              <div class="seed-label">Recommended Minecraft Seed</div>
+              <div class="seed-number" id="seedNumber"></div>
+            </div>
+            <button class="copy-btn" id="copyBtn" onclick="copySeed()">Copy seed</button>
+          </div>
+        </div>
+
+        <div class="detail-grid">
+          <div class="detail-card">
+            <h4>Spawn Biome</h4>
+            <strong id="spawnBiome"></strong>
+            <p>The recorded spawn biome for this seed in the indexed dataset.</p>
+          </div>
+
+          <div class="detail-card">
+            <h4>Nearby Match Biomes</h4>
+            <div class="tag-row" id="matchedBiomes"></div>
+          </div>
+
+          <div class="detail-card">
+            <h4>Nearby Structures</h4>
+            <div class="tag-row" id="matchedStructures"></div>
+          </div>
+
+          <div class="detail-card">
+            <h4>Match Pool</h4>
+            <strong id="matchPool"></strong>
+            <p id="matchScore"></p>
+          </div>
+        </div>
+
+        <div class="footnote" id="resultFootnote"></div>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
   <script>
-    const GENRE_LABELS = {
-      metal:      "heavy rock / metal",
-      indipop:    "indie pop / soft acoustic",
-      country:    "country / folk",
-      ambient:    "ambient / atmospheric",
-      electronic: "electronic / synth",
-      jazz:       "jazz / swing",
-      hiphop:     "hip-hop / R&B",
-      pop:        "pop / dance-pop",
-      classical:  "classical / orchestral",
-      rock:       "rock / alternative",
-      default:    "classic Minecraft-style music"
-    };
+    const API_BASE_URL = {{ api_base_url|tojson }};
 
-    async function generate() {
-      const url = document.getElementById("spotifyUrl").value.trim();
-      if (!url) return;
+    let genres = [];
+    let selectedGenreKey = null;
 
-      setLoading(true);
+    function setHelperText(message) {
+      document.getElementById("helperText").textContent = message;
+    }
+
+    function setLoading(isLoading) {
+      document.getElementById("loading").style.display = isLoading ? "block" : "none";
+      document.getElementById("generateBtn").disabled = isLoading || !selectedGenreKey;
+    }
+
+    function showError(message) {
+      const box = document.getElementById("errorBox");
+      box.textContent = message;
+      box.style.display = "block";
+    }
+
+    function hideError() {
+      document.getElementById("errorBox").style.display = "none";
+      document.getElementById("errorBox").textContent = "";
+    }
+
+    function setNote(message) {
+      const box = document.getElementById("noteBox");
+      if (!message) {
+        box.style.display = "none";
+        box.textContent = "";
+        return;
+      }
+
+      box.textContent = message;
+      box.style.display = "block";
+    }
+
+    function renderTags(containerId, items, emptyLabel) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+
+      const values = Array.isArray(items) && items.length ? items : [emptyLabel];
+      values.forEach(value => {
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = value;
+        container.appendChild(tag);
+      });
+    }
+
+    function renderGenres() {
+      const grid = document.getElementById("genreGrid");
+      grid.innerHTML = "";
+
+      genres.forEach(genre => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "genre-card" + (genre.key === selectedGenreKey ? " active" : "");
+        button.onclick = () => selectGenre(genre.key);
+
+        const previewBiomes = (genre.biomes || []).slice(0, 3);
+        button.innerHTML = `
+          <div class="genre-title">
+            <strong>${genre.label}</strong>
+            <span class="genre-pulse"></span>
+          </div>
+          <div class="genre-description">${genre.description}</div>
+          <div class="tag-row">
+            ${previewBiomes.map(biome => `<span class="tag">${biome}</span>`).join("")}
+          </div>
+        `;
+
+        grid.appendChild(button);
+      });
+    }
+
+    function selectGenre(key) {
+      selectedGenreKey = key;
+      renderGenres();
+      document.getElementById("generateBtn").disabled = false;
+
+      const selected = genres.find(genre => genre.key === key);
+      if (selected) {
+        setHelperText(`Selected ${selected.label}. Ask mc-seed-db for a fresh match whenever you're ready.`);
+        setNote(selected.note || "");
+      }
+    }
+
+    async function loadGenres() {
       hideError();
-      setAnalysisNote(null);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/genres`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Could not load genres from mc-seed-db.");
+        }
+
+        genres = data.genres || [];
+        if (!genres.length) {
+          throw new Error("mc-seed-db returned no genres.");
+        }
+
+        selectedGenreKey = genres[0].key;
+        renderGenres();
+        selectGenre(selectedGenreKey);
+      } catch (error) {
+        showError(error.message || "Could not connect to the local seed API.");
+        setHelperText("Start the backend, then refresh this page.");
+      }
+    }
+
+    async function generateSeed() {
+      if (!selectedGenreKey) {
+        return;
+      }
+
+      hideError();
+      setLoading(true);
       document.getElementById("result").style.display = "none";
 
       try {
-        const res  = await fetch("/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url })
-        });
-        const data = await res.json();
+        const response = await fetch(`${API_BASE_URL}/api/recommend-seed?genre=${encodeURIComponent(selectedGenreKey)}`);
+        const data = await response.json();
 
-        if (data.error) { showError(data.error); return; }
+        if (!response.ok) {
+          throw new Error(data.error || "Could not generate a seed.");
+        }
 
         renderResult(data);
-      } catch (e) {
-        showError("Something went wrong. Is the server running?");
+      } catch (error) {
+        showError(error.message || "Could not fetch a seed from mc-seed-db.");
       } finally {
         setLoading(false);
       }
     }
 
     function renderResult(data) {
-      document.getElementById("albumArt").src    = data.album_art || "";
-      document.getElementById("trackName").textContent  = data.track_name  || "Unknown Track";
-      document.getElementById("artistName").textContent = data.artist      || "Unknown Artist";
-      document.getElementById("seedNum").textContent    = data.seed;
-      setAnalysisNote(data.analysis_note);
+      document.getElementById("resultGenreBadge").textContent = `${data.genre.label} match`;
+      document.getElementById("resultGenreTitle").textContent = data.genre.label;
+      document.getElementById("resultGenreDescription").textContent = data.genre.description;
+      document.getElementById("seedNumber").textContent = data.seed;
+      document.getElementById("spawnBiome").textContent = data.spawnBiome || "Unknown";
+      document.getElementById("matchPool").textContent = `${data.totalMatchingSeeds} candidate seeds`;
+      document.getElementById("matchScore").textContent = `Picked from the strongest matches in the current pool. Score: ${data.matchScore}.`;
 
-      const p = data.profile;
-      if (!p) { console.error("Missing profile in response"); return; }
+      renderTags("matchedBiomes", data.matchedBiomes, "No matched biomes recorded");
+      renderTags("matchedStructures", data.matchedStructures, "No featured structures on this pick");
 
-      document.getElementById("terrain").textContent     = p.terrain;
-      document.getElementById("biome").textContent       = p.dominant_biome;
-      document.getElementById("atmosphere").textContent  = p.atmosphere;
-      document.getElementById("hostility").textContent   = p.hostility;
-
-      const genreLabel = GENRE_LABELS[p.mod_genre] || p.mod_genre;
-      document.getElementById("genreBadge").textContent = "In-world genre: " + genreLabel;
-      document.getElementById("genreNote").textContent  = genreLabel + " music";
-
-      const genreSourceEl = document.getElementById("genreSource");
-      if (p.genre_source === "lastfm") {
-        genreSourceEl.textContent = "genre via Last.fm community tags";
-      } else if (p.genre_source === "audio-analysis") {
-        genreSourceEl.textContent = "genre estimated from audio features";
-      } else {
-        genreSourceEl.textContent = "";
+      const footnote = [];
+      footnote.push(`Served by ${data.source}.`);
+      if (data.genre.note) {
+        footnote.push(data.genre.note);
       }
+      footnote.push("Run the button again to get another high-match seed for the same genre.");
+      document.getElementById("resultFootnote").textContent = footnote.join(" ");
 
-      // Stats
-      const stats = p.stats || {};
-      const statsHtml = [
-        { label: "Energy",       val: stats.energy,       unit: "%" },
-        { label: "Positivity",   val: stats.positivity,   unit: "%" },
-        { label: "Tempo",        val: stats.tempo,         unit: "BPM" },
-        { label: "Acoustic",     val: stats.acousticness,  unit: "%" },
-        { label: "Danceability", val: stats.danceability,  unit: "%" }
-      ].map(s => `
-        <div class="stat">
-          <div class="stat-val">${s.val}</div>
-          <div class="stat-unit">${s.unit}</div>
-          <div class="stat-label">${s.label}</div>
-        </div>
-      `).join("");
-      document.getElementById("statsGrid").innerHTML = statsHtml;
-
+      setNote(data.genre.note || "");
       document.getElementById("result").style.display = "block";
     }
 
     function copySeed() {
-      const seed = document.getElementById("seedNum").textContent;
-      navigator.clipboard.writeText(seed);
-      const btn = document.querySelector(".copy-btn");
-      btn.textContent = "Copied!";
-      setTimeout(() => btn.textContent = "Copy", 2000);
-    }
-
-    function setLoading(on) {
-      document.getElementById("loading").style.display = on ? "block" : "none";
-      document.getElementById("generateBtn").disabled = on;
-    }
-
-    function showError(msg) {
-      const box = document.getElementById("errorBox");
-      box.textContent = "⚠️ " + msg;
-      box.style.display = "block";
-    }
-
-    function hideError() {
-      document.getElementById("errorBox").style.display = "none";
-    }
-
-    function setAnalysisNote(msg) {
-      const box = document.getElementById("analysisBox");
-      if (!msg) {
-        box.style.display = "none";
-        box.textContent = "";
+      const seed = document.getElementById("seedNumber").textContent;
+      if (!seed) {
         return;
       }
-      box.textContent = "Note: " + msg;
-      box.style.display = "block";
+
+      navigator.clipboard.writeText(seed);
+      const button = document.getElementById("copyBtn");
+      button.textContent = "Copied";
+      setTimeout(() => {
+        button.textContent = "Copy seed";
+      }, 1600);
     }
 
-    document.getElementById("spotifyUrl").addEventListener("keydown", e => {
-      if (e.key === "Enter") generate();
-    });
+    loadGenres();
   </script>
-
 </body>
 </html>
