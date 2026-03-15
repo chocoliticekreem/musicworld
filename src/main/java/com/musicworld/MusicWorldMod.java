@@ -82,9 +82,10 @@ public class MusicWorldMod implements ModInitializer {
                                                 return 0;
                                             }
 
-                                            // Pass player chunk X so terrain blends from their position
+                                            // Pass player chunk X+Z so terrain blends radially from their position
                                             int playerChunkX = (int) Math.floor(source.getPosition().x / 16.0);
-                                            WorldGenConfig.setGenre(genre, playerChunkX);
+                                            int playerChunkZ = (int) Math.floor(source.getPosition().z / 16.0);
+                                            WorldGenConfig.setGenre(genre, playerChunkX, playerChunkZ);
                                             source.sendFeedback(
                                                     () -> Text.literal("Genre set to: " + genre
                                                             + ". New chunks will use this profile."),

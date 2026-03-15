@@ -5,18 +5,20 @@ package com.musicworld.worldgen;
  * at a genre-switch boundary. No Minecraft dependencies — fully unit-testable.
  *
  * Blend model:
- *   - When the genre changes, we record the chunk-coordinate of the switch.
- *   - For each new column (worldX, worldZ) we compute a signed distance (in chunks)
- *     from that boundary line.
- *   - Within BLEND_RADIUS chunks of the boundary the parameters are lerped
- *     using a smooth-step curve so there is no hard cliff.
+ *   - When the genre changes, we record the chunk-coordinate of the switch point
+ *     (both X and Z — the player's position).
+ *   - For each new column we compute the radial distance in chunks from that point.
+ *   - Within BLEND_RADIUS chunks the parameters are lerped using a smooth-step
+ *     curve. Beyond BLEND_RADIUS the new genre is fully applied.
+ *   - Using radial (2D) distance means the transition forms a circle around the
+ *     player rather than a straight vertical line, which looks far more natural.
  */
 public final class TerrainBlend {
 
     private TerrainBlend() {}
 
-    /** Half-width of the transition zone, in chunks (16 blocks each). */
-    public static final int BLEND_RADIUS = 4;
+    /** Radius of the transition zone, in chunks (16 blocks each). */
+    public static final int BLEND_RADIUS = 8;
 
     /**
      * Smooth-step: maps t in [0,1] to a smooth S-curve.
@@ -36,31 +38,32 @@ public final class TerrainBlend {
 
     /**
      * Compute the blend factor (0.0 = fully old genre, 1.0 = fully new genre)
-     * for a world column at {@code worldX}, given that the genre switched at
-     * chunk X = {@code switchChunkX}.
+     * for a world column at ({@code worldX}, {@code worldZ}), given that the
+     * genre switched at chunk ({@code switchChunkX}, {@code switchChunkZ}).
      *
-     * Columns more than BLEND_RADIUS chunks west of the switch → factor 0 (old genre).
-     * Columns more than BLEND_RADIUS chunks east of the switch → factor 1 (new genre).
-     * Between → smooth-stepped blend.
-     *
-     * We only blend in X for now (direction of travel when /genworld is issued).
+     * Uses radial distance so the transition is a circle, not a straight line.
+     * Columns within BLEND_RADIUS chunks of the switch point blend old → new.
+     * Columns beyond BLEND_RADIUS are fully new genre (factor = 1).
      */
-    public static double blendFactor(int worldX, int switchChunkX) {
-        // Convert world X to chunk X
-        int columnChunkX = Math.floorDiv(worldX, 16);
-        // Distance in chunks from the switch boundary
-        int dist = columnChunkX - switchChunkX;
-        // Map into [-BLEND_RADIUS, +BLEND_RADIUS] → [0, 1]
-        double t = (dist + BLEND_RADIUS) / (double) (2 * BLEND_RADIUS);
+    public static double blendFactor(int worldX, int worldZ, int switchChunkX, int switchChunkZ) {
+        int colChunkX = Math.floorDiv(worldX, 16);
+        int colChunkZ = Math.floorDiv(worldZ, 16);
+        double dx = colChunkX - switchChunkX;
+        double dz = colChunkZ - switchChunkZ;
+        double radialDist = Math.sqrt(dx * dx + dz * dz);
+        // t=0 at switch point (fully old), t=1 at BLEND_RADIUS (fully new)
+        double t = radialDist / BLEND_RADIUS;
         return smoothStep(t);
     }
 
     /**
      * Blend a single terrain parameter (e.g. baseHeight, terrainRoughness)
-     * between old and new values using the blend factor for this column.
+     * between old and new values using the radial blend factor for this column.
      */
-    public static double blendParam(double oldVal, double newVal, int worldX, int switchChunkX) {
-        double t = blendFactor(worldX, switchChunkX);
+    public static double blendParam(double oldVal, double newVal,
+                                    int worldX, int worldZ,
+                                    int switchChunkX, int switchChunkZ) {
+        double t = blendFactor(worldX, worldZ, switchChunkX, switchChunkZ);
         return lerp(oldVal, newVal, t);
     }
 }
