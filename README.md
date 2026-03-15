@@ -96,6 +96,19 @@ The script polls every 20 seconds. When it detects a genre change it fires `/gen
 - Set `ENABLE_LYRICS = False` in `scripts/musecraft.py` to disable lyrics entirely.
 - Get a free Genius API key at genius.com/api-clients (takes 2 minutes).
 
+### Gemini DJ (optional)
+
+On each track change, Gemini rewrites the song title as a Minecraft pun and the first 3 lyrics with Minecraft references, displayed in chat before the lyrics scroll.
+
+1. Get a free Gemini API key at [aistudio.google.com](https://aistudio.google.com)
+2. Install the SDK: `pip install google-genai`
+3. Add to `.env`:
+   ```
+   GEMINI_API_KEY=your_gemini_key
+   ```
+
+To disable: delete `scripts/gemini_dj.py`.
+
 ---
 
 ## Building the mod
