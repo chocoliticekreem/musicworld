@@ -85,6 +85,26 @@ def detect_genre(track, artist, api_key):
     return None
 
 
+def fetch_lyrics(track, artist, api_key):
+    """
+    Fetch lyrics for track/artist from Genius. Returns list of non-empty lines
+    with section headers removed, or empty list on failure.
+    """
+    try:
+        import lyricsgenius
+        genius = lyricsgenius.Genius(api_key, verbose=False, remove_section_headers=True)
+        song = genius.search_song(track, artist)
+        if not song:
+            return []
+        lines = [l.strip() for l in song.lyrics.split('\n') if l.strip()]
+        # Remove the first line which is usually "Track TitleLyrics"
+        if lines and lines[0].lower().endswith('lyrics'):
+            lines = lines[1:]
+        return lines
+    except Exception:
+        return []
+
+
 # weather: "thunder" | "rain" | "clear" | None (no change)
 # time: int (ticks) | None (no change)
 GENRE_ATMOSPHERE = {
@@ -96,6 +116,8 @@ GENRE_ATMOSPHERE = {
     "pop":        {"weather": "clear",   "time": 6000},
     "ambient":    {"weather": None,      "time": None},
 }
+
+ENABLE_LYRICS = True  # set to False to disable lyrics in chat
 
 
 def send_genworld(genre, host="127.0.0.1", password="", port=25575):

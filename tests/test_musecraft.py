@@ -100,3 +100,29 @@ def test_genre_atmosphere_ambient_no_change(monkeypatch):
     assert "/genworld ambient" in commands_sent
     assert len([c for c in commands_sent if "/weather" in c]) == 0
     assert len([c for c in commands_sent if "/time" in c]) == 0
+
+
+def test_fetch_lyrics_returns_lines(monkeypatch):
+    class FakeSong:
+        lyrics = "Line one\n[Verse 1]\nLine two\n\nLine three\n"
+
+    class FakeGenius:
+        def __init__(self, key, verbose, remove_section_headers): pass
+        def search_song(self, track, artist): return FakeSong()
+
+    import lyricsgenius
+    monkeypatch.setattr(lyricsgenius, 'Genius', FakeGenius)
+    lines = musecraft.fetch_lyrics("Stronger", "Kanye West", api_key="testkey")
+    assert "Line one" in lines
+    assert "Line two" in lines
+    assert "Line three" in lines
+
+def test_fetch_lyrics_returns_empty_on_failure(monkeypatch):
+    class FakeGenius:
+        def __init__(self, *a, **kw): pass
+        def search_song(self, track, artist): raise Exception("network error")
+
+    import lyricsgenius
+    monkeypatch.setattr(lyricsgenius, 'Genius', FakeGenius)
+    lines = musecraft.fetch_lyrics("Unknown", "Unknown", api_key="testkey")
+    assert lines == []
