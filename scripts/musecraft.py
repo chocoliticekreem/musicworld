@@ -247,7 +247,7 @@ class SyncedScroller:
             if self._stop_event.is_set():
                 return
             try:
-                with MCRcon(self._host, self._password, port=self._port) as mcr:
+                with MCRcon(self._host, self._password, port=self._port, timeout=0) as mcr:
                     mcr.command(f"/say ♪ {line}")
             except Exception as e:
                 print(f"  SyncedScroller RCON error: {e}")
