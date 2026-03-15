@@ -734,6 +734,81 @@ public class MusicChunkGenerator extends ChunkGenerator {
         }
     }
 
+    // NEON TOWER (Electronic): tall purpur/end stone tower, sea lantern bands, end rod antennae
+    private void buildNeonTower(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
+        GenreProfile p = WorldGenConfig.getActive();
+        int towerH = 20 + rand.nextInt(14);  // 20–33
+        BlockPos.Mutable m = new BlockPos.Mutable();
+
+        BlockState purpur   = Blocks.PURPUR_BLOCK.getDefaultState();
+        BlockState endStone = Blocks.END_STONE_BRICKS.getDefaultState();
+        BlockState lantern  = Blocks.SEA_LANTERN.getDefaultState();
+        BlockState endRod   = Blocks.END_ROD.getDefaultState();
+        BlockState amethyst = Blocks.AMETHYST_CLUSTER.getDefaultState();
+
+        groundStructure(world, cx, cz, groundY, 2, endStone, p);
+
+        // 3x3 base pad of end stone bricks
+        for (int dx = -2; dx <= 2; dx++)
+            for (int dz = -2; dz <= 2; dz++) {
+                m.set(cx + dx, groundY, cz + dz);
+                world.setBlockState(m, endStone, 3);
+            }
+
+        // Tower shaft: 3x3, alternating purpur and end stone every 4 rows
+        for (int y = 1; y <= towerH; y++) {
+            BlockState mat = (y / 4) % 2 == 0 ? purpur : endStone;
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++) {
+                    m.set(cx + dx, groundY + y, cz + dz);
+                    world.setBlockState(m, mat, 3);
+                }
+        }
+
+        // Sea lantern bands at regular intervals (inlaid in the outer shell)
+        for (int lightY : StructureGeometry.towerLightLevels(towerH, 6)) {
+            // Full ring of lanterns replacing the outer shell at this level
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++) {
+                    boolean isOuter = Math.abs(dx) == 1 || Math.abs(dz) == 1;
+                    if (!isOuter) continue;
+                    m.set(cx + dx, groundY + lightY, cz + dz);
+                    world.setBlockState(m, lantern, 3);
+                }
+        }
+
+        // Amethyst clusters on random sides at mid-height
+        int midY = groundY + towerH / 2;
+        int[][] sides = {{2, 0}, {-2, 0}, {0, 2}, {0, -2}};
+        for (int[] side : sides) {
+            if (rand.nextInt(3) == 0) {
+                m.set(cx + side[0], midY + rand.nextInt(4) - 1, cz + side[1]);
+                if (world.getBlockState(m).isAir())
+                    world.setBlockState(m, amethyst, 3);
+            }
+        }
+
+        // Top cap: sea lantern crown
+        int topY = groundY + towerH + 1;
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++) {
+                m.set(cx + dx, topY, cz + dz);
+                world.setBlockState(m, lantern, 3);
+            }
+
+        // End rod antennae (3–5 rods of varying height)
+        int[][] antennaOffsets = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        int antennaCount = 3 + rand.nextInt(3);
+        for (int i = 0; i < antennaCount; i++) {
+            int[] off = antennaOffsets[i];
+            int rodH = 3 + rand.nextInt(6);
+            for (int y = 1; y <= rodH; y++) {
+                m.set(cx + off[0], topY + y, cz + off[1]);
+                world.setBlockState(m, endRod, 3);
+            }
+        }
+    }
+
     /** Huge brown mushroom: stem 5-9 high, 5x5 cap with random trim */
     private void placeHugeMushroom(StructureWorldAccess world, int x, int y, int z, Random rand) {
         int stemH = 5 + rand.nextInt(5);
@@ -779,110 +854,234 @@ public class MusicChunkGenerator extends ChunkGenerator {
             case "PLATFORMS"  -> buildPlatform(world, cx, groundY, cz, rand);
             case "GAZEBOS"    -> buildGazebo(world, cx, groundY, cz, rand);
             case "RUINS"      -> buildRuin(world, cx, groundY, cz, rand);
+            case "NONE"       -> buildNeonTower(world, cx, groundY, cz, rand);
         }
     }
 
-    // PILLARS (Metal): obsidian pillar(s), varying height, lava or crying obsidian cap
+    // -------------------------------------------------------------------------
+    // Shared: fill solid blocks downward so structures don't float
+    // -------------------------------------------------------------------------
+
+    private void groundStructure(StructureWorldAccess world, int cx, int cz, int groundY,
+                                 int halfW, BlockState fill, GenreProfile p) {
+        int[] corners = {
+            computeHeight(cx - halfW, cz - halfW, p),
+            computeHeight(cx + halfW, cz - halfW, p),
+            computeHeight(cx - halfW, cz + halfW, p),
+            computeHeight(cx + halfW, cz + halfW, p)
+        };
+        int depth = StructureGeometry.groundingDepth(groundY, corners);
+        if (depth <= 0) return;
+        BlockPos.Mutable m = new BlockPos.Mutable();
+        for (int dx = -halfW; dx <= halfW; dx++)
+            for (int dz = -halfW; dz <= halfW; dz++)
+                for (int dy = 1; dy <= depth; dy++) {
+                    m.set(cx + dx, groundY - dy, cz + dz);
+                    if (!world.getBlockState(m).isAir()) break;
+                    world.setBlockState(m, fill, 3);
+                }
+    }
+
+    // PILLARS (Metal): 3x3 obsidian core with blackstone brick cladding, chains, optional bridge
     private void buildPillar(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
-        int height = 15 + rand.nextInt(16);  // 15-30
+        GenreProfile p = WorldGenConfig.getActive();
+        int height = 15 + rand.nextInt(16);  // 15–30
         boolean doublePillar = rand.nextInt(3) == 0;
-        BlockState capBlock = rand.nextBoolean() ? Blocks.LAVA.getDefaultState()
-                                                 : Blocks.CRYING_OBSIDIAN.getDefaultState();
+        BlockState obsidian = Blocks.OBSIDIAN.getDefaultState();
+        BlockState bsBrick  = Blocks.BLACKSTONE.getDefaultState();
+        BlockState chain    = Blocks.CHAIN.getDefaultState();
+        BlockState cap      = rand.nextBoolean() ? Blocks.CRYING_OBSIDIAN.getDefaultState()
+                                                 : Blocks.LAVA.getDefaultState();
         BlockPos.Mutable m = new BlockPos.Mutable();
 
-        // Base slab (3x3 or 5x5)
-        int baseR = rand.nextBoolean() ? 1 : 2;
-        for (int dx = -baseR; dx <= baseR; dx++)
-            for (int dz = -baseR; dz <= baseR; dz++) {
+        // Ground the 5x5 base
+        groundStructure(world, cx, cz, groundY, 2, bsBrick, p);
+
+        // 5x5 blackstone base pad
+        for (int dx = -2; dx <= 2; dx++)
+            for (int dz = -2; dz <= 2; dz++) {
                 m.set(cx + dx, groundY, cz + dz);
-                world.setBlockState(m, Blocks.BLACKSTONE.getDefaultState(), 3);
+                world.setBlockState(m, bsBrick, 3);
             }
 
-        // Main pillar
+        // 3x3 pillar: obsidian core, blackstone brick shell
         for (int y = 1; y <= height; y++) {
-            m.set(cx, groundY + y, cz);
-            world.setBlockState(m, Blocks.OBSIDIAN.getDefaultState(), 3);
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++) {
+                    m.set(cx + dx, groundY + y, cz + dz);
+                    boolean isCore = dx == 0 && dz == 0;
+                    world.setBlockState(m, isCore ? obsidian : bsBrick, 3);
+                }
         }
-        m.set(cx, groundY + height + 1, cz);
-        world.setBlockState(m, capBlock, 3);
 
-        // Second pillar offset from first
+        // Cap
+        m.set(cx, groundY + height + 1, cz);
+        world.setBlockState(m, cap, 3);
+
+        // Chains hanging from cap (4 sides, random length 2–5)
+        int[][] chainOffsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] off : chainOffsets) {
+            int chainLen = 2 + rand.nextInt(4);
+            for (int y = 0; y < chainLen; y++) {
+                m.set(cx + off[0], groundY + height - y, cz + off[1]);
+                if (world.getBlockState(m).isAir())
+                    world.setBlockState(m, chain, 3);
+            }
+        }
+
+        // Second pillar + optional chain bridge between them
         if (doublePillar) {
-            int ox = cx + (rand.nextBoolean() ? 5 : -5);
-            int oz = cz + (rand.nextBoolean() ? 5 : -5);
-            int h2 = 8 + rand.nextInt(12);
-            int gy2 = computeHeight(ox, oz, WorldGenConfig.getActive());
+            int ox = cx + (rand.nextBoolean() ? 8 : -8);
+            int oz = cz + (rand.nextBoolean() ? 8 : -8);
+            int h2 = 10 + rand.nextInt(10);
+            int gy2 = computeHeight(ox, oz, p);
+            groundStructure(world, ox, oz, gy2, 1, bsBrick, p);
             for (int y = 1; y <= h2; y++) {
-                m.set(ox, gy2 + y, oz);
-                world.setBlockState(m, Blocks.OBSIDIAN.getDefaultState(), 3);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++) {
+                        m.set(ox + dx, gy2 + y, oz + dz);
+                        world.setBlockState(m, dx == 0 && dz == 0 ? obsidian : bsBrick, 3);
+                    }
             }
             m.set(ox, gy2 + h2 + 1, oz);
             world.setBlockState(m, Blocks.LAVA.getDefaultState(), 3);
+
+            // Chain bridge between pillars at the lower top
+            int bridgeY = Math.min(groundY + height, gy2 + h2);
+            int steps = Math.abs(ox - cx);
+            for (int i = 1; i < steps; i++) {
+                int bx = cx + (ox > cx ? i : -i);
+                int bz = cz + (oz > cz ? i : -i);
+                // Sag: parabolic droop — deepest in middle
+                double t = (double) i / steps;
+                int sag = (int) (3 * t * (1 - t) * 4);
+                m.set(bx, bridgeY - sag, bz);
+                world.setBlockState(m, chain, 3);
+                // Trapdoor walkway on every other step
+                if (i % 2 == 0) {
+                    m.set(bx, bridgeY - sag - 1, bz);
+                    if (world.getBlockState(m).isAir())
+                        world.setBlockState(m, Blocks.DARK_OAK_TRAPDOOR.getDefaultState(), 3);
+                }
+            }
         }
     }
 
-    // BUILDINGS (Jazz): stone brick building, varied size and material, random entrance side
+    // BUILDINGS (Jazz): layered materials, windows, chimney, hanging lantern
     private void buildBuilding(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
-        int halfW = 3 + rand.nextInt(3);  // 3-5, so footprint 7x7 to 11x11
-        int wallH = 3 + rand.nextInt(3);  // 3-5
+        GenreProfile p = WorldGenConfig.getActive();
+        int halfW = 3 + rand.nextInt(3);  // 3–5
+        int wallH = 4 + rand.nextInt(3);  // 4–6
         BlockPos.Mutable m = new BlockPos.Mutable();
 
-        // Wall material varies
-        BlockState[] wallMats = {Blocks.STONE_BRICKS.getDefaultState(),
-            Blocks.MOSSY_STONE_BRICKS.getDefaultState(),
-            Blocks.COBBLESTONE.getDefaultState()};
-        BlockState wall = wallMats[rand.nextInt(wallMats.length)];
-        BlockState roof = rand.nextBoolean() ? Blocks.OAK_PLANKS.getDefaultState()
-                                             : Blocks.DARK_OAK_PLANKS.getDefaultState();
+        // Material layers: cobblestone bottom third, stone brick upper, mossy patches random
+        BlockState cobble     = Blocks.COBBLESTONE.getDefaultState();
+        BlockState stoneBrick = Blocks.STONE_BRICKS.getDefaultState();
+        BlockState mossy      = Blocks.MOSSY_STONE_BRICKS.getDefaultState();
+        BlockState roof       = rand.nextBoolean() ? Blocks.DARK_OAK_PLANKS.getDefaultState()
+                                                   : Blocks.SPRUCE_PLANKS.getDefaultState();
+        BlockState roofSlab   = rand.nextBoolean() ? Blocks.DARK_OAK_SLAB.getDefaultState()
+                                                   : Blocks.SPRUCE_SLAB.getDefaultState();
+
+        groundStructure(world, cx, cz, groundY, halfW, cobble, p);
 
         // Floor
         for (int dx = -halfW; dx <= halfW; dx++)
             for (int dz = -halfW; dz <= halfW; dz++) {
                 m.set(cx + dx, groundY, cz + dz);
-                world.setBlockState(m, wall, 3);
+                world.setBlockState(m, stoneBrick, 3);
             }
 
-        // Entrance on a random side (0=south, 1=north, 2=east, 3=west)
+        // Entrance side
         int entranceSide = rand.nextInt(4);
+        int lowerThird   = Math.max(1, wallH / 3);
+
         for (int y = 1; y <= wallH; y++) {
+            // Pick wall material: cobble lower third, stone brick above, mossy patch random
+            BlockState mat;
+            if (y <= lowerThird)       mat = cobble;
+            else if (rand.nextInt(6) == 0) mat = mossy;
+            else                           mat = stoneBrick;
+
             for (int dx = -halfW; dx <= halfW; dx++) {
                 for (int dz = -halfW; dz <= halfW; dz++) {
                     boolean isWall = (dx == -halfW || dx == halfW || dz == -halfW || dz == halfW);
                     if (!isWall) continue;
+
+                    // Entrance opening (2 blocks tall, 3 wide)
                     boolean isEntrance = switch (entranceSide) {
-                        case 0 -> dz == halfW && dx >= -1 && dx <= 1 && y <= 2;
+                        case 0 -> dz ==  halfW && dx >= -1 && dx <= 1 && y <= 2;
                         case 1 -> dz == -halfW && dx >= -1 && dx <= 1 && y <= 2;
-                        case 2 -> dx == halfW && dz >= -1 && dz <= 1 && y <= 2;
+                        case 2 -> dx ==  halfW && dz >= -1 && dz <= 1 && y <= 2;
                         default -> dx == -halfW && dz >= -1 && dz <= 1 && y <= 2;
                     };
                     if (isEntrance) continue;
+
+                    // Windows: 2-block-tall cutouts at even offsets, rows 2–3
+                    boolean isWindow = false;
+                    if (y == 2 || y == 3) {
+                        for (int wp : StructureGeometry.windowPositions(halfW)) {
+                            if ((dx == -halfW || dx == halfW) && dz == wp) { isWindow = true; break; }
+                            if ((dz == -halfW || dz == halfW) && dx == wp) { isWindow = true; break; }
+                        }
+                    }
+                    if (isWindow) continue;
+
                     m.set(cx + dx, groundY + y, cz + dz);
-                    world.setBlockState(m, wall, 3);
+                    world.setBlockState(m, mat, 3);
                 }
             }
         }
 
-        // Roof
+        // Roof: solid plank layer + slab overhang one block outside
+        int roofY = groundY + wallH + 1;
         for (int dx = -halfW; dx <= halfW; dx++)
             for (int dz = -halfW; dz <= halfW; dz++) {
-                m.set(cx + dx, groundY + wallH + 1, cz + dz);
+                m.set(cx + dx, roofY, cz + dz);
                 world.setBlockState(m, roof, 3);
             }
+        // Slab overhang
+        for (int dx = -(halfW + 1); dx <= halfW + 1; dx++)
+            for (int dz = -(halfW + 1); dz <= halfW + 1; dz++) {
+                boolean onEdge = Math.abs(dx) == halfW + 1 || Math.abs(dz) == halfW + 1;
+                if (!onEdge) continue;
+                m.set(cx + dx, roofY, cz + dz);
+                if (world.getBlockState(m).isAir())
+                    world.setBlockState(m, roofSlab, 3);
+            }
 
-        // Interior torch
-        m.set(cx, groundY + 1, cz);
-        world.setBlockState(m, Blocks.TORCH.getDefaultState(), 3);
+        // Chimney (random corner of roof, 2–3 blocks tall)
+        int[][] roofCorners = {{halfW - 1, halfW - 1}, {halfW - 1, -(halfW - 1)},
+                               {-(halfW - 1), halfW - 1}, {-(halfW - 1), -(halfW - 1)}};
+        int[] rc = roofCorners[rand.nextInt(4)];
+        int chimneyH = 2 + rand.nextInt(2);
+        for (int y = 1; y <= chimneyH; y++) {
+            m.set(cx + rc[0], roofY + y, cz + rc[1]);
+            world.setBlockState(m, stoneBrick, 3);
+        }
+        // Campfire smoke at chimney top
+        m.set(cx + rc[0], roofY + chimneyH + 1, cz + rc[1]);
+        if (world.getBlockState(m).isAir())
+            world.setBlockState(m, Blocks.CAMPFIRE.getDefaultState(), 3);
+
+        // Interior hanging lantern from ceiling center
+        m.set(cx, groundY + wallH, cz);
+        world.setBlockState(m, Blocks.CHAIN.getDefaultState(), 3);
+        m.set(cx, groundY + wallH - 1, cz);
+        world.setBlockState(m, Blocks.LANTERN.getDefaultState(), 3);
     }
 
     // COLUMNS (Classical): quartz pillars, varying height and spacing, optional interior floor
     private void buildColumns(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
-        int colH = 8 + rand.nextInt(9);   // 8-16
-        int spacing = rand.nextBoolean() ? 4 : 5;  // tighter or wider
+        GenreProfile p = WorldGenConfig.getActive();
+        int colH = 8 + rand.nextInt(9);   // 8–16
+        int spacing = rand.nextBoolean() ? 4 : 5;
         BlockPos.Mutable m = new BlockPos.Mutable();
         int[][] corners = {{-spacing, -spacing}, {-spacing, spacing},
                            {spacing, -spacing}, {spacing, spacing}};
 
-        // Columns
+        groundStructure(world, cx, cz, groundY, spacing, Blocks.SMOOTH_QUARTZ.getDefaultState(), p);
+
         for (int[] c : corners) {
             for (int y = 0; y <= colH; y++) {
                 m.set(cx + c[0], groundY + y, cz + c[1]);
@@ -890,7 +1089,6 @@ public class MusicChunkGenerator extends ChunkGenerator {
             }
         }
 
-        // Top beams
         int topY = groundY + colH;
         for (int dx = -spacing; dx <= spacing; dx++) {
             m.set(cx + dx, topY, cz - spacing);
@@ -905,14 +1103,12 @@ public class MusicChunkGenerator extends ChunkGenerator {
             world.setBlockState(m, Blocks.QUARTZ_SLAB.getDefaultState(), 3);
         }
 
-        // Optional interior floor (40% chance)
         if (rand.nextInt(5) < 2) {
             for (int dx = -(spacing - 1); dx <= spacing - 1; dx++)
                 for (int dz = -(spacing - 1); dz <= spacing - 1; dz++) {
                     m.set(cx + dx, groundY, cz + dz);
                     world.setBlockState(m, Blocks.SMOOTH_QUARTZ.getDefaultState(), 3);
                 }
-            // Central pedestal with item frame or beacon base
             m.set(cx, groundY + 1, cz);
             world.setBlockState(m, Blocks.GOLD_BLOCK.getDefaultState(), 3);
         }
@@ -920,8 +1116,9 @@ public class MusicChunkGenerator extends ChunkGenerator {
 
     // PLATFORMS (Hiphop): elevated concrete platform, varying size/height/edge material
     private void buildPlatform(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
-        int halfW = 4 + rand.nextInt(3);       // 4-6, footprint 9x9 to 13x13
-        int platformH = 6 + rand.nextInt(7);   // 6-12 block elevation
+        GenreProfile p = WorldGenConfig.getActive();
+        int halfW = 4 + rand.nextInt(3);       // 4–6
+        int platformH = 6 + rand.nextInt(7);   // 6–12
         int platformY = groundY + platformH;
         BlockPos.Mutable m = new BlockPos.Mutable();
 
@@ -932,6 +1129,8 @@ public class MusicChunkGenerator extends ChunkGenerator {
         BlockState[] floors = {Blocks.GRAY_CONCRETE.getDefaultState(),
             Blocks.BLACK_CONCRETE.getDefaultState(), Blocks.CYAN_CONCRETE.getDefaultState()};
         BlockState floorMat = floors[rand.nextInt(floors.length)];
+
+        groundStructure(world, cx, cz, groundY, halfW, Blocks.GRAY_CONCRETE.getDefaultState(), p);
 
         // Corner stilts (iron bars)
         int[][] stiltCorners = {{-halfW, -halfW}, {-halfW, halfW}, {halfW, -halfW}, {halfW, halfW}};
@@ -959,8 +1158,9 @@ public class MusicChunkGenerator extends ChunkGenerator {
 
     // GAZEBOS (Pop): varied wood type, optional second floor, flower ring
     private void buildGazebo(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
+        GenreProfile p = WorldGenConfig.getActive();
         BlockPos.Mutable m = new BlockPos.Mutable();
-        int halfW = 2 + rand.nextInt(2);   // 2-3
+        int halfW = 2 + rand.nextInt(2);   // 2–3
 
         // Wood type varies
         BlockState[] planks = {Blocks.OAK_PLANKS.getDefaultState(),
@@ -971,6 +1171,8 @@ public class MusicChunkGenerator extends ChunkGenerator {
             Blocks.BIRCH_SLAB.getDefaultState(), Blocks.JUNGLE_SLAB.getDefaultState()};
         int woodIdx = rand.nextInt(3);
         BlockState plank = planks[woodIdx], fence = fences[woodIdx], slab = slabs[woodIdx];
+
+        groundStructure(world, cx, cz, groundY, halfW, plank, p);
 
         // Floor
         for (int dx = -halfW; dx <= halfW; dx++)
@@ -1023,8 +1225,9 @@ public class MusicChunkGenerator extends ChunkGenerator {
 
     // RUINS (Ambient): crumbling walls, varying size/height, rubble scatter, optional water pool
     private void buildRuin(StructureWorldAccess world, int cx, int groundY, int cz, Random rand) {
+        GenreProfile p = WorldGenConfig.getActive();
         BlockPos.Mutable m = new BlockPos.Mutable();
-        int halfW = 3 + rand.nextInt(3);  // 3-5
+        int halfW = 3 + rand.nextInt(3);  // 3–5
         int wallH = 2 + rand.nextInt(4);  // 2-5
         float decayRate = 0.3f + rand.nextFloat() * 0.4f;  // 30-70% blocks removed
 
@@ -1033,6 +1236,8 @@ public class MusicChunkGenerator extends ChunkGenerator {
             Blocks.COBBLESTONE.getDefaultState(), Blocks.STONE_BRICKS.getDefaultState(),
             Blocks.MOSSY_STONE_BRICKS.getDefaultState()};
         BlockState wallMat = wallMats[rand.nextInt(wallMats.length)];
+
+        groundStructure(world, cx, cz, groundY, halfW, Blocks.COBBLESTONE.getDefaultState(), p);
 
         // Walls
         for (int y = 0; y <= wallH; y++) {
