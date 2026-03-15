@@ -11,6 +11,7 @@ except ImportError:
 import os
 import re
 import subprocess
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -193,6 +194,61 @@ def get_current_track():
     if len(parts) != 2:
         return None
     return parts[0].strip(), parts[1].strip()
+
+
+def get_spotify_position():
+    """Returns current Spotify playback position in milliseconds, or None on failure."""
+    try:
+        result = subprocess.run(
+            ['osascript', '-e',
+             'tell application "Spotify" to player position'],
+            capture_output=True, text=True
+        )
+        return int(float(result.stdout.strip()) * 1000)
+    except Exception:
+        return None
+
+
+class SyncedScroller:
+    """
+    Scrolls timestamped lyric lines in Minecraft chat synced to Spotify playback.
+    Takes list of (timestamp_ms, line) tuples. Fires each line at the right moment.
+    Stop by calling stop().
+    """
+
+    def __init__(self, timed_lines, rcon_host, rcon_password, rcon_port):
+        self._lines = sorted(timed_lines, key=lambda x: x[0])
+        self._host = rcon_host
+        self._password = rcon_password
+        self._port = rcon_port
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+
+    def _run(self):
+        start_wall = time.time()
+        start_position = get_spotify_position() or 0
+        for ts_ms, line in self._lines:
+            if self._stop_event.is_set():
+                return
+            elapsed_ms = (time.time() - start_wall) * 1000
+            current_song_ms = start_position + elapsed_ms
+            wait_ms = ts_ms - current_song_ms
+            if wait_ms > 0:
+                if self._stop_event.wait(wait_ms / 1000):
+                    return
+            if self._stop_event.is_set():
+                return
+            try:
+                with MCRcon(self._host, self._password, port=self._port) as mcr:
+                    mcr.command(f"/say ♪ {line}")
+            except Exception:
+                pass
 
 
 CONFIG = {

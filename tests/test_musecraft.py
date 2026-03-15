@@ -132,3 +132,69 @@ def test_fetch_lyrics_with_timestamps_returns_empty_on_none(monkeypatch):
     monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: None)
     result = musecraft.fetch_lyrics_with_timestamps("Unknown", "Unknown")
     assert result == []
+
+
+def test_get_spotify_position_returns_ms(monkeypatch):
+    with patch('subprocess.run') as mock_run:
+        mock_run.return_value.stdout = "30.5\n"
+        mock_run.return_value.returncode = 0
+        pos = musecraft.get_spotify_position()
+    assert pos == 30500
+
+def test_get_spotify_position_returns_none_on_failure(monkeypatch):
+    with patch('subprocess.run') as mock_run:
+        mock_run.return_value.stdout = "not a number"
+        result = musecraft.get_spotify_position()
+    assert result is None
+
+def test_synced_scroller_sends_lines(monkeypatch):
+    commands_sent = []
+
+    class FakeMCRcon:
+        def __init__(self, host, password, port): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def command(self, cmd):
+            commands_sent.append(cmd)
+            return ""
+
+    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
+    monkeypatch.setattr(musecraft, 'get_spotify_position', lambda: 0)
+
+    scroller = musecraft.SyncedScroller(
+        timed_lines=[(50, "Line one"), (100, "Line two")],
+        rcon_host="127.0.0.1",
+        rcon_password="test",
+        rcon_port=25575,
+    )
+    scroller.start()
+    scroller._thread.join(timeout=2)
+    assert any("Line one" in c for c in commands_sent)
+    assert any("Line two" in c for c in commands_sent)
+
+def test_synced_scroller_stops_early(monkeypatch):
+    commands_sent = []
+
+    class FakeMCRcon:
+        def __init__(self, host, password, port): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def command(self, cmd):
+            commands_sent.append(cmd)
+            return ""
+
+    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
+    monkeypatch.setattr(musecraft, 'get_spotify_position', lambda: 0)
+
+    scroller = musecraft.SyncedScroller(
+        timed_lines=[(50, "Line one"), (30000, "Line two")],
+        rcon_host="127.0.0.1",
+        rcon_password="test",
+        rcon_port=25575,
+    )
+    scroller.start()
+    import time as t; t.sleep(0.2)
+    scroller.stop()
+    scroller._thread.join(timeout=2)
+    assert any("Line one" in c for c in commands_sent)
+    assert not any("Line two" in c for c in commands_sent)
