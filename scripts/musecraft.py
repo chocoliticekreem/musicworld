@@ -231,6 +231,8 @@ class SyncedScroller:
         self._stop_event.set()
 
     def _run(self):
+        # NOTE: position is estimated by dead-reckoning from start_position.
+        # Pausing, seeking, or slow RCON will cause drift.
         start_wall = time.time()
         start_position = get_spotify_position() or 0
         for ts_ms, line in self._lines:
@@ -373,6 +375,9 @@ def main():
             break
         except Exception as e:
             print(f"Error: {e}")
+            if current_scroller:
+                current_scroller.stop()
+                current_scroller = None
 
         time.sleep(CONFIG["poll_interval"])
 
