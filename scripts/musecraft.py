@@ -239,24 +239,32 @@ def main():
             last_track = (track, artist)
             print(f"Now playing: {artist} — {track}")
 
+            # Fetch lyrics once for both DJ intro and scroller
+            lyrics_lines = (
+                fetch_lyrics(track, artist, CONFIG["genius_api_key"])
+                if CONFIG["genius_api_key"] else []
+            )
+
             # Gemini DJ intro
             if _GEMINI_DJ_AVAILABLE and CONFIG["gemini_api_key"]:
                 intro_lines = get_dj_intro(
                     track=track,
                     artist=artist,
-                    first_lines=fetch_lyrics(track, artist, CONFIG["genius_api_key"])[:3]
-                    if CONFIG["genius_api_key"] else [],
+                    first_lines=lyrics_lines[:3],
                     api_key=CONFIG["gemini_api_key"],
                 )
                 if intro_lines:
-                    try:
-                        with MCRcon(CONFIG["rcon_host"], CONFIG["rcon_password"],
-                                    port=CONFIG["rcon_port"]) as mcr:
-                            for line in intro_lines:
-                                mcr.command(f"/say {line}")
-                        print(f"  Gemini DJ: sent {len(intro_lines)} lines")
-                    except Exception as e:
-                        print(f"  Gemini DJ RCON error: {e}")
+                    if MCRcon is None:
+                        print("  Gemini DJ: mcrcon not installed")
+                    else:
+                        try:
+                            with MCRcon(CONFIG["rcon_host"], CONFIG["rcon_password"],
+                                        port=CONFIG["rcon_port"]) as mcr:
+                                for line in intro_lines:
+                                    mcr.command(f"/say {line}")
+                            print(f"  Gemini DJ: sent {len(intro_lines)} lines")
+                        except Exception as e:
+                            print(f"  Gemini DJ RCON error: {e}")
                 else:
                     print("  Gemini DJ: no intro generated")
 
@@ -267,7 +275,7 @@ def main():
 
             # Start lyrics for new track
             if ENABLE_LYRICS and CONFIG["genius_api_key"]:
-                lines = fetch_lyrics(track, artist, CONFIG["genius_api_key"])
+                lines = lyrics_lines
                 if lines:
                     # Get track duration via osascript (milliseconds)
                     try:
