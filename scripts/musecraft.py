@@ -118,6 +118,33 @@ def fetch_lyrics(track, artist):
         return []
 
 
+def fetch_lyrics_with_timestamps(track, artist):
+    """
+    Fetch synced lyrics via syncedlyrics.
+    Returns list of (timestamp_ms: int, line: str) tuples, sorted by timestamp.
+    Returns [] on failure or if no synced lyrics available.
+    """
+    if syncedlyrics is None:
+        return []
+    try:
+        lrc = syncedlyrics.search(f"{track} {artist}")
+        if not lrc:
+            return []
+        results = []
+        for line in lrc.split('\n'):
+            m = re.match(r'\[(\d+):(\d+\.\d+)\](.*)', line)
+            if m:
+                minutes = int(m.group(1))
+                seconds = float(m.group(2))
+                text = m.group(3).strip()
+                if text:
+                    ts_ms = int((minutes * 60 + seconds) * 1000)
+                    results.append((ts_ms, text))
+        return results
+    except Exception:
+        return []
+
+
 # weather: "thunder" | "rain" | "clear" | None (no change)
 # time: int (ticks) | None (no change)
 GENRE_ATMOSPHERE = {

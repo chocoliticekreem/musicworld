@@ -115,3 +115,20 @@ def test_fetch_lyrics_returns_empty_on_failure(monkeypatch):
     monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: None)
     lines = musecraft.fetch_lyrics("Unknown", "Unknown")
     assert lines == []
+
+
+def test_fetch_lyrics_with_timestamps_returns_tuples(monkeypatch):
+    import syncedlyrics
+    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw:
+        "[00:01.00] Line one\n[00:05.50] Line two\n[00:09.00] Line three\n")
+    result = musecraft.fetch_lyrics_with_timestamps("Stronger", "Kanye West")
+    assert len(result) == 3
+    assert result[0] == (1000, "Line one")
+    assert result[1] == (5500, "Line two")
+    assert result[2] == (9000, "Line three")
+
+def test_fetch_lyrics_with_timestamps_returns_empty_on_none(monkeypatch):
+    import syncedlyrics
+    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: None)
+    result = musecraft.fetch_lyrics_with_timestamps("Unknown", "Unknown")
+    assert result == []
