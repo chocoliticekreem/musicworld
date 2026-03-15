@@ -11,6 +11,12 @@ import urllib.parse
 import urllib.request
 import json
 
+try:
+    from gemini_dj import get_dj_intro
+    _GEMINI_DJ_AVAILABLE = True
+except ImportError:
+    _GEMINI_DJ_AVAILABLE = False
+
 # Load .env file if present
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 if os.path.exists(_env_path):
@@ -194,6 +200,7 @@ def get_current_track():
 CONFIG = {
     "lastfm_api_key": os.getenv("LASTFM_API_KEY", ""),
     "genius_api_key": os.getenv("GENIUS_API_KEY", ""),
+    "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
     "rcon_host":      os.getenv("RCON_HOST", "127.0.0.1"),
     "rcon_port":      int(os.getenv("RCON_PORT", "25575")),
     "rcon_password":  os.getenv("RCON_PASSWORD", ""),
@@ -231,6 +238,27 @@ def main():
 
             last_track = (track, artist)
             print(f"Now playing: {artist} — {track}")
+
+            # Gemini DJ intro
+            if _GEMINI_DJ_AVAILABLE and CONFIG["gemini_api_key"]:
+                intro_lines = get_dj_intro(
+                    track=track,
+                    artist=artist,
+                    first_lines=fetch_lyrics(track, artist, CONFIG["genius_api_key"])[:3]
+                    if CONFIG["genius_api_key"] else [],
+                    api_key=CONFIG["gemini_api_key"],
+                )
+                if intro_lines:
+                    try:
+                        with MCRcon(CONFIG["rcon_host"], CONFIG["rcon_password"],
+                                    port=CONFIG["rcon_port"]) as mcr:
+                            for line in intro_lines:
+                                mcr.command(f"/say {line}")
+                        print(f"  Gemini DJ: sent {len(intro_lines)} lines")
+                    except Exception as e:
+                        print(f"  Gemini DJ RCON error: {e}")
+                else:
+                    print("  Gemini DJ: no intro generated")
 
             # Stop previous lyric scroller
             if current_scroller:
