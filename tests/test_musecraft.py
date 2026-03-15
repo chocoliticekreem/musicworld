@@ -103,76 +103,15 @@ def test_genre_atmosphere_ambient_no_change(monkeypatch):
 
 
 def test_fetch_lyrics_returns_lines(monkeypatch):
-    class FakeSong:
-        lyrics = "Line one\n[Verse 1]\nLine two\n\nLine three\n"
-
-    class FakeGenius:
-        def __init__(self, key, verbose, remove_section_headers): pass
-        def search_song(self, track, artist): return FakeSong()
-
-    import lyricsgenius
-    monkeypatch.setattr(lyricsgenius, 'Genius', FakeGenius)
-    lines = musecraft.fetch_lyrics("Stronger", "Kanye West", api_key="testkey")
+    import syncedlyrics
+    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: "[00:01.00] Line one\n[00:05.00] Line two\n[00:09.00] Line three\n")
+    lines = musecraft.fetch_lyrics("Stronger", "Kanye West")
     assert "Line one" in lines
     assert "Line two" in lines
     assert "Line three" in lines
 
 def test_fetch_lyrics_returns_empty_on_failure(monkeypatch):
-    class FakeGenius:
-        def __init__(self, *a, **kw): pass
-        def search_song(self, track, artist): raise Exception("network error")
-
-    import lyricsgenius
-    monkeypatch.setattr(lyricsgenius, 'Genius', FakeGenius)
-    lines = musecraft.fetch_lyrics("Unknown", "Unknown", api_key="testkey")
+    import syncedlyrics
+    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: None)
+    lines = musecraft.fetch_lyrics("Unknown", "Unknown")
     assert lines == []
-
-
-def test_lyric_scroller_sends_lines(monkeypatch):
-    commands_sent = []
-
-    class FakeMCRcon:
-        def __init__(self, host, password, port): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def command(self, cmd):
-            commands_sent.append(cmd)
-            return ""
-
-    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
-    scroller = musecraft.LyricScroller(
-        lines=["Hello", "World"],
-        interval=0.01,
-        rcon_host="127.0.0.1",
-        rcon_password="test",
-        rcon_port=25575,
-    )
-    scroller.start()
-    scroller._thread.join(timeout=1)
-    assert any("Hello" in c for c in commands_sent)
-    assert any("World" in c for c in commands_sent)
-
-def test_lyric_scroller_stops_early(monkeypatch):
-    commands_sent = []
-
-    class FakeMCRcon:
-        def __init__(self, host, password, port): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def command(self, cmd):
-            commands_sent.append(cmd)
-            return ""
-
-    monkeypatch.setattr(musecraft, 'MCRcon', FakeMCRcon)
-    scroller = musecraft.LyricScroller(
-        lines=["Line1", "Line2", "Line3"],
-        interval=10,
-        rcon_host="127.0.0.1",
-        rcon_password="test",
-        rcon_port=25575,
-    )
-    scroller.start()
-    import time; time.sleep(0.05)
-    scroller.stop()
-    scroller._thread.join(timeout=1)
-    assert len(commands_sent) == 1

@@ -5,7 +5,6 @@ except ImportError:
 
 import os
 import subprocess
-import threading
 import time
 import urllib.parse
 import urllib.request
@@ -92,57 +91,25 @@ def detect_genre(track, artist, api_key):
     return None
 
 
-def fetch_lyrics(track, artist, api_key):
+def fetch_lyrics(track, artist):
     """
-    Fetch lyrics for track/artist from Genius. Returns list of non-empty lines
-    with section headers removed, or empty list on failure.
+    Fetch lyrics via syncedlyrics (no API key needed).
+    Returns list of non-empty lyric lines with timestamps stripped, or [] on failure.
     """
     try:
-        import lyricsgenius
-        genius = lyricsgenius.Genius(api_key, verbose=False, remove_section_headers=True)
-        song = genius.search_song(track, artist)
-        if not song:
+        import syncedlyrics
+        import re
+        lrc = syncedlyrics.search(f"{track} {artist}", allow_plain_format=True)
+        if not lrc:
             return []
-        lines = [l.strip() for l in song.lyrics.split('\n') if l.strip()]
-        # Remove the first line which is usually "Track TitleLyrics"
-        if lines and lines[0].lower().endswith('lyrics'):
-            lines = lines[1:]
+        lines = []
+        for line in lrc.split('\n'):
+            stripped = re.sub(r'\[\d+:\d+\.\d+\]', '', line).strip()
+            if stripped:
+                lines.append(stripped)
         return lines
     except Exception:
         return []
-
-
-class LyricScroller:
-    """
-    Scrolls lyrics in Minecraft chat via RCON at a timed interval.
-    One line at a time. Stop by calling stop().
-    """
-
-    def __init__(self, lines, interval, rcon_host, rcon_password, rcon_port):
-        self._lines = lines
-        self._interval = interval
-        self._host = rcon_host
-        self._password = rcon_password
-        self._port = rcon_port
-        self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True)
-
-    def start(self):
-        self._thread.start()
-
-    def stop(self):
-        self._stop_event.set()
-
-    def _run(self):
-        for line in self._lines:
-            if self._stop_event.is_set():
-                return
-            try:
-                with MCRcon(self._host, self._password, port=self._port) as mcr:
-                    mcr.command(f"/say \u266a {line}")
-            except Exception:
-                pass
-            self._stop_event.wait(self._interval)
 
 
 # weather: "thunder" | "rain" | "clear" | None (no change)
@@ -156,9 +123,6 @@ GENRE_ATMOSPHERE = {
     "pop":        {"weather": "clear",   "time": 6000},
     "ambient":    {"weather": None,      "time": None},
 }
-
-ENABLE_LYRICS = True  # set to False to disable lyrics in chat
-
 
 def send_genworld(genre, host="127.0.0.1", password="", port=25575):
     """Send /genworld <genre> + weather/time RCON commands."""
@@ -199,7 +163,6 @@ def get_current_track():
 
 CONFIG = {
     "lastfm_api_key": os.getenv("LASTFM_API_KEY", ""),
-    "genius_api_key": os.getenv("GENIUS_API_KEY", ""),
     "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
     "rcon_host":      os.getenv("RCON_HOST", "127.0.0.1"),
     "rcon_port":      int(os.getenv("RCON_PORT", "25575")),
@@ -216,12 +179,9 @@ def main():
     if not CONFIG["rcon_password"]:
         print("ERROR: Set RCON_PASSWORD env var.")
         return
-    if ENABLE_LYRICS and not CONFIG["genius_api_key"]:
-        print("WARNING: GENIUS_API_KEY not set — lyrics disabled.")
 
     current_genre = None
     last_track = None
-    current_scroller = None
 
     while True:
         try:
@@ -239,11 +199,7 @@ def main():
             last_track = (track, artist)
             print(f"Now playing: {artist} — {track}")
 
-            # Fetch lyrics once for both DJ intro and scroller
-            lyrics_lines = (
-                fetch_lyrics(track, artist, CONFIG["genius_api_key"])
-                if CONFIG["genius_api_key"] else []
-            )
+            lyrics_lines = fetch_lyrics(track, artist)
 
             # Gemini DJ intro
             if _GEMINI_DJ_AVAILABLE and CONFIG["gemini_api_key"]:
@@ -268,38 +224,6 @@ def main():
                 else:
                     print("  Gemini DJ: no intro generated")
 
-            # Stop previous lyric scroller
-            if current_scroller:
-                current_scroller.stop()
-                current_scroller = None
-
-            # Start lyrics for new track
-            if ENABLE_LYRICS and CONFIG["genius_api_key"]:
-                lines = lyrics_lines
-                if lines:
-                    # Get track duration via osascript (milliseconds)
-                    try:
-                        dur_result = subprocess.run(
-                            ['osascript', '-e',
-                             'tell application "Spotify" to duration of current track'],
-                            capture_output=True, text=True
-                        )
-                        duration_ms = int(dur_result.stdout.strip())
-                        interval = max(1.5, (duration_ms / 1000) / len(lines))
-                    except Exception:
-                        interval = 3.0
-                    current_scroller = LyricScroller(
-                        lines=lines,
-                        interval=interval,
-                        rcon_host=CONFIG["rcon_host"],
-                        rcon_password=CONFIG["rcon_password"],
-                        rcon_port=CONFIG["rcon_port"],
-                    )
-                    current_scroller.start()
-                    print(f"  Lyrics: {len(lines)} lines, {interval:.1f}s interval")
-                else:
-                    print("  Lyrics: not found")
-
             # Genre detection + genworld
             genre = detect_genre(track, artist, api_key=CONFIG["lastfm_api_key"])
             if not genre:
@@ -321,8 +245,6 @@ def main():
 
         except KeyboardInterrupt:
             print("\nStopped.")
-            if current_scroller:
-                current_scroller.stop()
             break
         except Exception as e:
             print(f"Error: {e}")
