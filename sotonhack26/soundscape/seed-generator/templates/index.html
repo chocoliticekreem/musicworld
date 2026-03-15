@@ -128,22 +128,6 @@
       line-height: 1.7;
     }
 
-    .hero-meta {
-      margin-top: 22px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-
-    .hero-chip {
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: rgba(255, 250, 240, 0.85);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
-
     .panel {
       padding: 28px;
     }
@@ -513,11 +497,6 @@
         Choose the kind of music you want to live inside. Soundscape handles the frontend,
         and <code>mc-seed-db</code> returns a Minecraft seed whose nearby biomes fit that vibe.
       </p>
-      <div class="hero-meta">
-        <div class="hero-chip">Frontend on localhost:5000</div>
-        <div class="hero-chip" id="apiBadge">API on same deployment</div>
-        <div class="hero-chip">Randomized from top matching seeds</div>
-      </div>
     </section>
 
     <section class="panel">
@@ -608,10 +587,6 @@
       : rawApiBaseUrl.replace(/\/$/, "");
     let genres = [];
     let selectedGenreKey = null;
-
-    document.getElementById("apiBadge").textContent = API_BASE_URL
-      ? `API on ${API_BASE_URL}`
-      : "API on same deployment";
 
     function setHelperText(message) {
       document.getElementById("helperText").textContent = message;

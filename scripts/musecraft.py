@@ -1,10 +1,12 @@
+import importlib
+
 try:
     from mcrcon import MCRcon
 except ImportError:
     MCRcon = None
 
 try:
-    import syncedlyrics
+    syncedlyrics = importlib.import_module("syncedlyrics")
 except ImportError:
     syncedlyrics = None
 
@@ -21,6 +23,7 @@ try:
     from gemini_dj import get_dj_intro
     _GEMINI_DJ_AVAILABLE = True
 except ImportError:
+    get_dj_intro = None
     _GEMINI_DJ_AVAILABLE = False
 
 # Load .env file if present
@@ -106,7 +109,7 @@ def fetch_lyrics(track, artist):
     if syncedlyrics is None:
         return []
     try:
-        lrc = syncedlyrics.search(f"{track} {artist}", allow_plain_format=True)
+        lrc = syncedlyrics.search(f"{track} {artist}")
         if not lrc:
             return []
         lines = []
@@ -128,7 +131,7 @@ def fetch_lyrics_with_timestamps(track, artist):
     if syncedlyrics is None:
         return []
     try:
-        lrc = syncedlyrics.search(f"{track} {artist}")
+        lrc = syncedlyrics.search(f"{track} {artist}", synced_only=True)
         if not lrc:
             return []
         results = []
@@ -145,6 +148,29 @@ def fetch_lyrics_with_timestamps(track, artist):
         return results
     except Exception:
         return []
+
+
+def _collect_intro_lyrics(track, artist, limit=10):
+    """
+    Build the best available lyric source for Gemini DJ.
+    Prefer synced lyrics for timing, then top up from plain lyrics if needed.
+    Returns (timed_lines, intro_lines).
+    """
+    timed_lines = fetch_lyrics_with_timestamps(track, artist)
+    intro_lines = [line for _, line in timed_lines[:limit]]
+    seen = set(intro_lines)
+
+    if len(intro_lines) < limit:
+        for line in fetch_lyrics(track, artist):
+            stripped = line.strip()
+            if not stripped or stripped in seen:
+                continue
+            intro_lines.append(stripped)
+            seen.add(stripped)
+            if len(intro_lines) >= limit:
+                break
+
+    return timed_lines, intro_lines[:limit]
 
 
 # weather: "thunder" | "rain" | "clear" | None (no change)
@@ -242,7 +268,7 @@ class SyncedScroller:
     Stop by calling stop().
     """
 
-    def __init__(self, timed_lines, rcon_host, rcon_password, rcon_port):
+    def __init__(self, timed_lines: list[tuple[int, str]], rcon_host, rcon_password, rcon_port):
         self._lines = sorted(timed_lines, key=lambda x: x[0])
         self._host = rcon_host
         self._password = rcon_password
@@ -318,61 +344,63 @@ def main():
             print(f"Now playing: {artist} — {track}")
 
             # Gemini DJ intro + synced pun lyrics
-            if _GEMINI_DJ_AVAILABLE and CONFIG["gemini_api_key"]:
-                timed_lines = fetch_lyrics_with_timestamps(track, artist)
-                lyrics_lines = [line for _, line in timed_lines]
-                intro_lines = get_dj_intro(
-                    track=track,
-                    artist=artist,
-                    first_lines=lyrics_lines[:10],
-                    api_key=CONFIG["gemini_api_key"],
-                )
-                if intro_lines:
-                    now_playing = intro_lines[0]
-                    pun_lines = intro_lines[1:]  # up to 10
+            if _GEMINI_DJ_AVAILABLE and get_dj_intro is not None and CONFIG["gemini_api_key"]:
+                timed_lines, lyrics_lines = _collect_intro_lyrics(track, artist)
+                if not lyrics_lines:
+                    print("  Gemini DJ: no lyrics found")
+                else:
+                    intro_lines = get_dj_intro(
+                        track=track,
+                        artist=artist,
+                        first_lines=lyrics_lines,
+                        api_key=CONFIG["gemini_api_key"],
+                    )
+                    if intro_lines:
+                        now_playing = intro_lines[0]
+                        pun_lines = intro_lines[1:]  # up to 10
 
-                    # Stop any previous scroller
-                    if current_scroller:
-                        current_scroller.stop()
-                        current_scroller = None
+                        # Stop any previous scroller
+                        if current_scroller:
+                            current_scroller.stop()
+                            current_scroller = None
 
-                    if MCRcon is None:
-                        print("  Gemini DJ: mcrcon not installed")
-                    else:
-                        # Send "Now Playing" header immediately
-                        try:
-                            with MCRcon(CONFIG["rcon_host"], CONFIG["rcon_password"],
-                                        port=CONFIG["rcon_port"]) as mcr:
-                                mcr.command(f"/say {now_playing}")
-                        except Exception as e:
-                            print(f"  Gemini DJ RCON error: {e}")
-
-                        # Pair pun lines with timestamps and start scroller
-                        if timed_lines and pun_lines:
-                            paired = list(zip(
-                                [ts for ts, _ in timed_lines[:len(pun_lines)]],
-                                pun_lines
-                            ))
-                            current_scroller = SyncedScroller(
-                                timed_lines=paired,
-                                rcon_host=CONFIG["rcon_host"],
-                                rcon_password=CONFIG["rcon_password"],
-                                rcon_port=CONFIG["rcon_port"],
-                            )
-                            current_scroller.start()
-                            print(f"  Gemini DJ: now playing sent, scroller started ({len(paired)} lines)")
+                        if MCRcon is None:
+                            print("  Gemini DJ: mcrcon not installed")
                         else:
-                            # No timestamps — fall back to sending all pun lines with delay
+                            # Send "Now Playing" header immediately
                             try:
                                 with MCRcon(CONFIG["rcon_host"], CONFIG["rcon_password"],
                                             port=CONFIG["rcon_port"]) as mcr:
-                                    for line in pun_lines:
-                                        mcr.command(f"/say {line}")
-                                        time.sleep(1.5)
+                                    mcr.command(f"/say {now_playing}")
                             except Exception as e:
                                 print(f"  Gemini DJ RCON error: {e}")
-                else:
-                    print("  Gemini DJ: no intro generated")
+
+                            # Pair pun lines with timestamps and start scroller
+                            if len(timed_lines) >= len(pun_lines) and pun_lines:
+                                paired = list(zip(
+                                    [ts for ts, _ in timed_lines[:len(pun_lines)]],
+                                    pun_lines
+                                ))
+                                current_scroller = SyncedScroller(
+                                    timed_lines=paired,
+                                    rcon_host=CONFIG["rcon_host"],
+                                    rcon_password=CONFIG["rcon_password"],
+                                    rcon_port=CONFIG["rcon_port"],
+                                )
+                                current_scroller.start()
+                                print(f"  Gemini DJ: now playing sent, scroller started ({len(paired)} lines)")
+                            else:
+                                # No timestamps — fall back to sending all pun lines with delay
+                                try:
+                                    with MCRcon(CONFIG["rcon_host"], CONFIG["rcon_password"],
+                                                port=CONFIG["rcon_port"]) as mcr:
+                                        for line in pun_lines:
+                                            mcr.command(f"/say {line}")
+                                            time.sleep(1.5)
+                                except Exception as e:
+                                    print(f"  Gemini DJ RCON error: {e}")
+                    else:
+                        print("  Gemini DJ: no intro generated")
 
             # Genre detection + genworld
             genre = detect_genre(track, artist, api_key=CONFIG["lastfm_api_key"])

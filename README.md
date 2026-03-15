@@ -75,9 +75,9 @@ Automatically runs `/genworld <genre>` when the genre of your current Spotify tr
 
 ### Setup
 
-1. Install dependency:
+1. Install dependencies:
    ```bash
-   pip install mcrcon syncedlyrics
+   pip install mcrcon syncedlyrics google-genai
    ```
 2. Get a free Last.fm API key at [last.fm/api](https://www.last.fm/api) (takes 2 minutes)
 3. Create a `.env` file in the repo root:
@@ -95,10 +95,10 @@ The script polls every 20 seconds. When it detects a genre change it fires `/gen
 
 ### Gemini DJ (optional)
 
-On each track change, Gemini rewrites the song title as a Minecraft pun and the first 3 lyrics with Minecraft references, displayed in chat before the lyrics scroll.
+On each track change, Gemini rewrites the song title as a Minecraft pun and the available lyric lines with Minecraft references, then sends them to chat. If synced lyrics are available, the pun lines scroll in time with the song; otherwise the script falls back to plain lyrics and sends them with a short delay.
 
 1. Get a free Gemini API key at [aistudio.google.com](https://aistudio.google.com)
-2. Install the SDK: `pip install google-genai`
+2. Install the SDK if you did not already: `pip install google-genai`
 3. Add to `.env`:
    ```
    GEMINI_API_KEY=your_gemini_key

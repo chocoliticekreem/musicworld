@@ -1,10 +1,12 @@
+import importlib
 import sys
 import os
+import types
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-import importlib
 import time
-import musecraft
+importlib.invalidate_caches()
+musecraft = importlib.import_module("musecraft")
 from unittest.mock import patch
 
 
@@ -104,24 +106,29 @@ def test_genre_atmosphere_ambient_no_change(monkeypatch):
 
 
 def test_fetch_lyrics_returns_lines(monkeypatch):
-    import syncedlyrics
-    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: "[00:01.00] Line one\n[00:05.00] Line two\n[00:09.00] Line three\n")
+    monkeypatch.setattr(
+        musecraft,
+        'syncedlyrics',
+        types.SimpleNamespace(search=lambda q, **kw: "[00:01.00] Line one\n[00:05.00] Line two\n[00:09.00] Line three\n"),
+    )
     lines = musecraft.fetch_lyrics("Stronger", "Kanye West")
     assert "Line one" in lines
     assert "Line two" in lines
     assert "Line three" in lines
 
 def test_fetch_lyrics_returns_empty_on_failure(monkeypatch):
-    import syncedlyrics
-    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: None)
+    monkeypatch.setattr(musecraft, 'syncedlyrics', types.SimpleNamespace(search=lambda q, **kw: None))
     lines = musecraft.fetch_lyrics("Unknown", "Unknown")
     assert lines == []
 
 
 def test_fetch_lyrics_with_timestamps_returns_tuples(monkeypatch):
-    import syncedlyrics
-    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw:
-        "[00:01.00] Line one\n[00:05.50] Line two\n[00:09.00] Line three\n")
+    monkeypatch.setattr(
+        musecraft,
+        'syncedlyrics',
+        types.SimpleNamespace(search=lambda q, **kw:
+            "[00:01.00] Line one\n[00:05.50] Line two\n[00:09.00] Line three\n"),
+    )
     result = musecraft.fetch_lyrics_with_timestamps("Stronger", "Kanye West")
     assert len(result) == 3
     assert result[0] == (1000, "Line one")
@@ -129,10 +136,37 @@ def test_fetch_lyrics_with_timestamps_returns_tuples(monkeypatch):
     assert result[2] == (9000, "Line three")
 
 def test_fetch_lyrics_with_timestamps_returns_empty_on_none(monkeypatch):
-    import syncedlyrics
-    monkeypatch.setattr(syncedlyrics, 'search', lambda q, **kw: None)
+    monkeypatch.setattr(musecraft, 'syncedlyrics', types.SimpleNamespace(search=lambda q, **kw: None))
     result = musecraft.fetch_lyrics_with_timestamps("Unknown", "Unknown")
     assert result == []
+
+
+def test_collect_intro_lyrics_falls_back_to_plain_lyrics(monkeypatch):
+    monkeypatch.setattr(musecraft, 'fetch_lyrics_with_timestamps', lambda t, a: [])
+    monkeypatch.setattr(musecraft, 'fetch_lyrics', lambda t, a: ["Line one", "Line two"])
+
+    timed_lines, intro_lines = musecraft._collect_intro_lyrics("Stronger", "Kanye West")
+
+    assert timed_lines == []
+    assert intro_lines == ["Line one", "Line two"]
+
+
+def test_collect_intro_lyrics_tops_up_synced_lines(monkeypatch):
+    monkeypatch.setattr(
+        musecraft,
+        'fetch_lyrics_with_timestamps',
+        lambda t, a: [(1000, "Line one"), (2000, "Line two")],
+    )
+    monkeypatch.setattr(
+        musecraft,
+        'fetch_lyrics',
+        lambda t, a: ["Line one", "Line two", "Line three", "Line four"],
+    )
+
+    timed_lines, intro_lines = musecraft._collect_intro_lyrics("Stronger", "Kanye West")
+
+    assert timed_lines == [(1000, "Line one"), (2000, "Line two")]
+    assert intro_lines == ["Line one", "Line two", "Line three", "Line four"]
 
 
 def test_get_spotify_position_returns_ms(monkeypatch):
