@@ -78,6 +78,28 @@ public class MusicChunkGenerator extends ChunkGenerator {
     // -------------------------------------------------------------------------
 
     private int computeHeight(int x, int z, GenreProfile p) {
+        int switchChunkX = WorldGenConfig.getSwitchChunkX();
+
+        // If no switch has happened yet, just use the active profile directly
+        if (switchChunkX == Integer.MIN_VALUE) {
+            return computeHeightForProfile(x, z, p);
+        }
+
+        // Blend terrain parameters between previous and active profile
+        GenreProfile prev = WorldGenConfig.getPrevious();
+        double roughness = TerrainBlend.blendParam(prev.terrainRoughness, p.terrainRoughness, x, switchChunkX);
+        double baseH     = TerrainBlend.blendParam(prev.baseHeight,       p.baseHeight,       x, switchChunkX);
+        double mtnFreq   = TerrainBlend.blendParam(prev.mountainFrequency, p.mountainFrequency, x, switchChunkX);
+
+        double s1 = OpenSimplex2S.noise2(42L, x * 0.005 * roughness, z * 0.005 * roughness)
+                * roughness * 40.0;
+        double s2 = OpenSimplex2S.noise2(99L, x * 0.02 * roughness, z * 0.02 * roughness)
+                * roughness * 15.0 * mtnFreq;
+        int h = (int) (baseH + s1 + s2);
+        return Math.max(5, Math.min(230, h));
+    }
+
+    private int computeHeightForProfile(int x, int z, GenreProfile p) {
         double s1 = OpenSimplex2S.noise2(42L, x * 0.005 * p.terrainRoughness, z * 0.005 * p.terrainRoughness)
                 * p.terrainRoughness * 40.0;
         double s2 = OpenSimplex2S.noise2(99L, x * 0.02 * p.terrainRoughness, z * 0.02 * p.terrainRoughness)
