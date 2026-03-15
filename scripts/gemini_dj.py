@@ -32,7 +32,7 @@ def get_dj_intro(track, artist, first_lines, api_key):
             artist=artist,
             lyrics=lyrics_text,
         )
-        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
         lines = [l.strip() for l in response.text.strip().split("\n") if l.strip()]
         return lines[:4] if len(lines) >= 4 else None
     except Exception as e:
