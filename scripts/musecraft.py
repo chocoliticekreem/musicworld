@@ -223,6 +223,7 @@ def main():
                                         port=CONFIG["rcon_port"]) as mcr:
                                 for line in intro_lines:
                                     mcr.command(f"/say {line}")
+                                    time.sleep(1.5)
                             print(f"  Gemini DJ: sent {len(intro_lines)} lines")
                         except Exception as e:
                             print(f"  Gemini DJ RCON error: {e}")
