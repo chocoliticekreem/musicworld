@@ -6,8 +6,8 @@ import gemini_dj
 
 
 def test_get_dj_intro_returns_four_lines(monkeypatch):
-    class FakeModel:
-        def generate_content(self, prompt):
+    class FakeModels:
+        def generate_content(self, model, contents):
             class Resp:
                 text = (
                     '♪ Now Playing: "Creeper Kingdom" (Stronger - Kanye West)\n'
@@ -17,9 +17,12 @@ def test_get_dj_intro_returns_four_lines(monkeypatch):
                 )
             return Resp()
 
-    import google.generativeai as genai
-    monkeypatch.setattr(genai, 'configure', lambda **kw: None)
-    monkeypatch.setattr(genai, 'GenerativeModel', lambda model: FakeModel())
+    class FakeClient:
+        def __init__(self, api_key):
+            self.models = FakeModels()
+
+    from google import genai
+    monkeypatch.setattr(genai, 'Client', FakeClient)
 
     lines = gemini_dj.get_dj_intro(
         track="Stronger",
@@ -33,14 +36,12 @@ def test_get_dj_intro_returns_four_lines(monkeypatch):
 
 
 def test_get_dj_intro_returns_none_on_failure(monkeypatch):
-    import google.generativeai as genai
-    monkeypatch.setattr(genai, 'configure', lambda **kw: None)
-
-    class RaisingModel:
-        def __init__(self, model):
+    class RaisingClient:
+        def __init__(self, api_key):
             raise Exception("API error")
 
-    monkeypatch.setattr(genai, 'GenerativeModel', RaisingModel)
+    from google import genai
+    monkeypatch.setattr(genai, 'Client', RaisingClient)
 
     lines = gemini_dj.get_dj_intro(
         track="Stronger",

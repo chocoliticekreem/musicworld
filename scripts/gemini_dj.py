@@ -1,5 +1,5 @@
 try:
-    import google.generativeai as genai
+    from google import genai
 except ImportError:
     genai = None
 
@@ -25,16 +25,16 @@ def get_dj_intro(track, artist, first_lines, api_key):
     if not api_key or genai is None:
         return None
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        client = genai.Client(api_key=api_key)
         lyrics_text = "\n".join(first_lines[:3]) if first_lines else "(no lyrics)"
         prompt = PROMPT_TEMPLATE.format(
             track=track,
             artist=artist,
             lyrics=lyrics_text,
         )
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
         lines = [l.strip() for l in response.text.strip().split("\n") if l.strip()]
         return lines[:4] if len(lines) >= 4 else None
-    except Exception:
+    except Exception as e:
+        print(f"  Gemini DJ error: {e}")
         return None
